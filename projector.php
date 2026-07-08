@@ -15,6 +15,7 @@ try {
 }
 
 $slides = $scraper->splitLyrics($song['lyric'] ?? '');
+$channel = "easylyrics-$id";
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -59,6 +60,21 @@ $slides = $scraper->splitLyrics($song['lyric'] ?? '');
             font-size: 14px;
             color: #888;
         }
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            color: #555;
+        }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #444;
+            transition: background 0.3s;
+        }
+        .status-dot.on { background: #22c55e; }
+        .status-dot.off { background: #ef4444; }
         .btn-exit {
             padding: 6px 16px;
             background: #c0392b;
@@ -155,6 +171,10 @@ $slides = $scraper->splitLyrics($song['lyric'] ?? '');
     <div class="toolbar" id="toolbar">
         <div class="toolbar-title"><?= htmlspecialchars($song['title']) ?></div>
         <div class="toolbar-actions">
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusLabel">Presenter</span>
+            </div>
             <span class="toolbar-counter" id="counter">1 / <?= count($slides) ?></span>
             <button class="btn-exit" onclick="exitProjector()">Tutup</button>
         </div>
@@ -184,17 +204,57 @@ $slides = $scraper->splitLyrics($song['lyric'] ?? '');
     <div class="nav-hint" id="navHint">&#8593;&#8595; &#8592;&#8594; navigasi &middot; Esc tutup</div>
 
     <script>
-        const slides = document.querySelectorAll('.slide, .slide-pause');
-        const total = slides.length;
+        const slideEls = document.querySelectorAll('.slide, .slide-pause');
+        const total = slideEls.length;
         let current = 0;
         let hintTimeout;
+        let channel = null;
 
-        function goTo(n) {
+        // ---- BroadcastChannel ----
+        function initChannel() {
+            try {
+                channel = new BroadcastChannel('<?= $channel ?>');
+                channel.onmessage = function(e) {
+                    const data = e.data;
+                    switch (data.action) {
+                        case 'goTo':
+                            goTo(data.index, false);
+                            break;
+                        case 'ping':
+                            channel.postMessage({ action: 'synced', index: current });
+                            updateStatus('on', 'Presenter terhubung');
+                            break;
+                    }
+                };
+                updateStatus('off', 'Menunggu presenter...');
+            } catch (e) {
+                updateStatus('off', 'BroadcastChannel N/A');
+            }
+        }
+
+        function broadcast(action, index) {
+            if (channel) {
+                channel.postMessage({ action, index });
+            }
+        }
+
+        function updateStatus(state, label) {
+            const dot = document.getElementById('statusDot');
+            dot.className = 'status-dot ' + state;
+            document.getElementById('statusLabel').textContent = label;
+        }
+
+        // ---- Navigation ----
+        function goTo(n, broadcastToPresenter) {
             if (n < 0 || n >= total) return;
-            slides.forEach(el => el.classList.remove('active'));
-            slides[n].classList.add('active');
+            slideEls.forEach(el => el.classList.remove('active'));
+            slideEls[n].classList.add('active');
             current = n;
             document.getElementById('counter').textContent = (n + 1) + ' / ' + total;
+
+            if (broadcastToPresenter !== false) {
+                broadcast('synced', n);
+            }
         }
 
         function next() { if (current < total - 1) goTo(current + 1); }
@@ -261,6 +321,9 @@ $slides = $scraper->splitLyrics($song['lyric'] ?? '');
         showHint();
         document.addEventListener('keydown', showHint);
         document.addEventListener('click', showHint);
+
+        // ---- Init ----
+        initChannel();
     </script>
 </body>
 </html>

@@ -122,6 +122,20 @@ $slug = $_GET['slug'] ?? '';
             transition: background 0.2s;
         }
         .projector-btn:hover { background: #222; }
+        .presenter-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            background: #1e1b4b;
+            color: #a78bfa;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .presenter-btn:hover { background: #2e2a6b; }
         .detail-section {
             margin-bottom: 20px;
         }
@@ -217,9 +231,14 @@ $slug = $_GET['slug'] ?? '';
             <div class="detail-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
                     <div class="detail-title" style="margin-bottom: 0;"><?= htmlspecialchars($song['title']) ?></div>
-                    <a class="projector-btn" href="projector.php?id=<?= $song['id'] ?>&slug=<?= urlencode($song['slug']) ?>" target="_blank">
-                        &#9654; Mode Proyektor
-                    </a>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <a class="projector-btn" href="projector.php?id=<?= $song['id'] ?>&slug=<?= urlencode($song['slug']) ?>" target="_blank">
+                            &#9654; Proyektor
+                        </a>
+                        <a class="presenter-btn" href="presenter.php?id=<?= $song['id'] ?>&slug=<?= urlencode($song['slug']) ?>" target="_blank">
+                            &#8291;&#9776; Presenter
+                        </a>
+                    </div>
                 </div>
 
                 <div class="detail-section">
