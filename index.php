@@ -108,6 +108,20 @@ $slug = $_GET['slug'] ?? '';
             color: #6C3EB8;
             margin-bottom: 20px;
         }
+        .projector-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            background: #000;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .projector-btn:hover { background: #222; }
         .detail-section {
             margin-bottom: 20px;
         }
@@ -201,7 +215,12 @@ $slug = $_GET['slug'] ?? '';
             }
             ?>
             <div class="detail-card">
-                <div class="detail-title"><?= htmlspecialchars($song['title']) ?></div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+                    <div class="detail-title" style="margin-bottom: 0;"><?= htmlspecialchars($song['title']) ?></div>
+                    <a class="projector-btn" href="projector.php?id=<?= $song['id'] ?>&slug=<?= urlencode($song['slug']) ?>" target="_blank">
+                        &#9654; Mode Proyektor
+                    </a>
+                </div>
 
                 <div class="detail-section">
                     <h3>Lirik</h3>

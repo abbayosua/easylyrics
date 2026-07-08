@@ -112,9 +112,50 @@ class UnlimitedWorshipScraper
             'metadata' => $metadata,
         ];
     }
+
+    public function splitLyrics(string $text): array
+{
+    $text = str_replace("\r\n", "\n", $text);
+    $lines = explode("\n", $text);
+
+    $slides = [];
+    $buffer = [];
+    $lastWasPause = false;
+
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '') {
+            if (!empty($buffer)) {
+                $slides[] = ['type' => 'lyric', 'lines' => $buffer];
+                $buffer = [];
+            }
+            if (!$lastWasPause) {
+                $slides[] = ['type' => 'pause'];
+                $lastWasPause = true;
+            }
+        } else {
+            $buffer[] = $line;
+            $lastWasPause = false;
+            if (count($buffer) === 2) {
+                $slides[] = ['type' => 'lyric', 'lines' => $buffer];
+                $buffer = [];
+            }
+        }
+    }
+
+    if (!empty($buffer)) {
+        $slides[] = ['type' => 'lyric', 'lines' => $buffer];
+    }
+
+    if (($slides[count($slides)-1]['type'] ?? '') === 'pause') {
+        array_pop($slides);
+    }
+
+    return $slides;
+}
 }
 
-if (PHP_SAPI === 'cli') {
+if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     $scraper = new UnlimitedWorshipScraper();
 
     if (!isset($argv[1])) {
