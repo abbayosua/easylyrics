@@ -34,6 +34,17 @@ class UnlimitedWorshipScraper
         return new DOMXPath($dom);
     }
 
+    private function innerText(DOMElement $node): string
+    {
+        $html = '';
+        foreach ($node->childNodes as $child) {
+            $html .= $child->ownerDocument->saveHTML($child);
+        }
+        $html = preg_replace('/<br\s*\/?>/i', "\n", $html);
+        $html = strip_tags($html);
+        return trim($html);
+    }
+
     public function search(string $keyword): array
     {
         $url = $this->baseUrl . '/search?type=1&key=' . urlencode($keyword);
@@ -83,12 +94,12 @@ class UnlimitedWorshipScraper
 
         $lyricNodes = $xpath->query("//pre[contains(@class, 'lyric-content') and contains(@class, 'active')]");
         if ($lyricNodes->length > 0) {
-            $lyric = trim($lyricNodes->item(0)->textContent);
+            $lyric = $this->innerText($lyricNodes->item(0));
         }
 
         $chordNodes = $xpath->query("//pre[contains(@class, 'lyric-chord')]");
         if ($chordNodes->length > 0) {
-            $chord = trim($chordNodes->item(0)->textContent);
+            $chord = $this->innerText($chordNodes->item(0));
         }
 
         $infoNodes = $xpath->query("//div[contains(@class, 'song-info')]//div[contains(@class, 'info')]");
@@ -116,6 +127,7 @@ class UnlimitedWorshipScraper
     public function splitLyrics(string $text): array
 {
     $text = str_replace("\r\n", "\n", $text);
+    $text = str_replace("\r", "\n", $text);
     $lines = explode("\n", $text);
 
     $slides = [];
