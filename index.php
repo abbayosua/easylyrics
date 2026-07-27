@@ -210,7 +210,7 @@ $slug = $_GET['slug'] ?? '';
     </style>
     <script>
         function openPresentation(id, slug) {
-            window.open('projector.php?id=' + id + '&slug=' + slug, '_blank');
+            window.open('projector.php?id=' + id + '&slug=' + slug, 'proyektor', 'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no');
             window.location.href = 'presenter.php?id=' + id + '&slug=' + slug;
         }
     </script>
@@ -302,6 +302,10 @@ $slug = $_GET['slug'] ?? '';
                 <p style="margin-top: 8px; font-size: 14px;">Sumber: <a href="https://unlimitedworship.org" target="_blank" style="color: #6C3EB8;">unlimitedworship.org</a></p>
             </div>
         <?php endif; ?>
+
+        <div style="text-align: center; margin-top: 40px; padding-top: 30px; border-top: 1px solid #ddd;">
+            <a href="biblepresentation.php" style="color: #6C3EB8; text-decoration: none; font-size: 15px; font-weight: 600;">&#10087; Baca Alkitab (AYT)</a>
+        </div>
     </div>
 </body>
 </html>

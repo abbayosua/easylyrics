@@ -19,8 +19,26 @@ php scraper.php 12345 detail song-slug  # CLI detail
 | `index.php` | Search + detail page (main UI) |
 | `projector.php` | Full-screen slide display (audience-facing) |
 | `presenter.php` | Controller with slide list, prev/next (operator-facing) |
+| `biblepresentation.php` | Bible verse presenter with book/chapter selector, verse slides, BroadcastChannel sync |
+| `bibleprojector.php` | Bible verse full-screen projector, BroadcastChannel listener |
 
 No framework, no database, no build step. Zero external dependencies (uses built-in DOMDocument, cURL, and hand-written CSS/JS).
+
+## Bible Feature
+
+Two files (`biblepresentation.php`, `bibleprojector.php`) provide Bible verse presentation using the [beeble API](https://beeble.vercel.app) with **Alkitab Terjemahan Baru (TB)**.
+
+**API**: `https://beeble.vercel.app/api/v1/passage/{abbr}/{chapter}?ver=tb`
+- Book list is embedded as a PHP array (66 books, fixed data)
+- Chapter content returns verses with `type: "content"` and `verse` number
+
+**Flow**:
+1. Open `biblepresentation.php` → select book + chapter → click "Muat"
+2. Verses display as slides (one verse per slide)
+3. Click "Proyektor" → opens `bibleprojector.php` in new window (1280x720 popup), current page stays in presenter mode
+4. Both communicate via `BroadcastChannel("bible-{book}-{chapter}")` — same protocol as lyrics (`goTo`, `synced`, `ping`)
+
+**Navigation**: Same as lyrics — keyboard arrows, click left/right on projector, button bar on presenter, slide list with click-to-jump.
 
 ## Architecture & Data Flow
 
