@@ -208,6 +208,12 @@ $slug = $_GET['slug'] ?? '';
             .search-form button { width: 100%; }
         }
     </style>
+    <script>
+        function openPresentation(id, slug) {
+            window.open('projector.php?id=' + id + '&slug=' + slug, '_blank');
+            window.location.href = 'presenter.php?id=' + id + '&slug=' + slug;
+        }
+    </script>
 </head>
 <body>
     <div class="container">
@@ -232,7 +238,7 @@ $slug = $_GET['slug'] ?? '';
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
                     <div class="detail-title" style="margin-bottom: 0;"><?= htmlspecialchars($song['title']) ?></div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <a class="projector-btn" href="projector.php?id=<?= $song['id'] ?>&slug=<?= urlencode($song['slug']) ?>" target="_blank">
+                        <a class="projector-btn" href="#" onclick="openPresentation(<?= $song['id'] ?>, <?= htmlspecialchars(json_encode($song['slug']), ENT_QUOTES, 'UTF-8') ?>); return false;">
                             &#9654; Proyektor
                         </a>
                         <a class="presenter-btn" href="presenter.php?id=<?= $song['id'] ?>&slug=<?= urlencode($song['slug']) ?>" target="_blank">
