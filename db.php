@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS songs (
     lyric      TEXT NOT NULL,
     chord      TEXT,
     metadata   JSON,
-    source     ENUM('manual','unlimitedworship') NOT NULL DEFAULT 'manual',
+    source     ENUM('manual','unlimitedworship','jrchord') NOT NULL DEFAULT 'manual',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_title (title)
 ) ENGINE=InnoDB;
@@ -76,6 +76,12 @@ CREATE TABLE IF NOT EXISTS state (
 INSERT INTO state (id, type) VALUES (1, 'idle')
 ON DUPLICATE KEY UPDATE id = id;
 ");
+        // source_ref added later (multi-source support) — add if missing
+        try {
+            $pdo->exec("ALTER TABLE songs ADD COLUMN source_ref VARCHAR(255) NULL AFTER source");
+        } catch (PDOException $e) {
+            // column already exists
+        }
     }
 
     // ---- songs ----
@@ -112,17 +118,17 @@ ON DUPLICATE KEY UPDATE id = id;
     }
 
     /** Inserts a song; on slug collision appends -2, -3, ... */
-    public static function insertSong(string $title, string $lyric, string $chord, string $source = 'manual', ?string $slug = null): array
+    public static function insertSong(string $title, string $lyric, string $chord, string $source = 'manual', ?string $slug = null, ?string $sourceRef = null): array
     {
         $base = $slug ?? self::slugify($title);
         $candidate = $base;
         for ($i = 2; ; $i++) {
             try {
                 $st = self::conn()->prepare(
-                    'INSERT INTO songs (title, slug, lyric, chord, metadata, source) VALUES (?, ?, ?, ?, ?, ?)'
+                    'INSERT INTO songs (title, slug, lyric, chord, metadata, source, source_ref) VALUES (?, ?, ?, ?, ?, ?, ?)'
                 );
-                $st->execute([$title, $candidate, $lyric, $chord ?: null, json_encode(['source' => $source]), $source]);
-                return ['id' => (int) self::conn()->lastInsertId(), 'title' => $title, 'slug' => $candidate];
+                $st->execute([$title, $candidate, $lyric, $chord ?: null, json_encode(['source' => $source]), $source, $sourceRef]);
+                return ['id' => (int) self::conn()->lastInsertId(), 'title' => $title, 'slug' => $candidate, 'source' => $source, 'source_ref' => $sourceRef];
             } catch (PDOException $e) {
                 if (str_contains($e->getMessage(), 'Duplicate entry')) {
                     $candidate = $base . '-' . $i;
@@ -131,6 +137,13 @@ ON DUPLICATE KEY UPDATE id = id;
                 throw $e;
             }
         }
+    }
+
+    /** Updates lyric/chord of an existing song (lazy full-detail fetch). */
+    public static function updateSongContent(int $id, string $lyric, string $chord): void
+    {
+        $st = self::conn()->prepare('UPDATE songs SET lyric = ?, chord = ? WHERE id = ?');
+        $st->execute([$lyric, $chord, $id]);
     }
 
     private static function decodeSong(array $row): array

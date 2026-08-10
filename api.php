@@ -57,41 +57,19 @@ switch ($action) {
         }
         $items = DB::searchSongs($q, 50);
 
-        // unlimitedworship is only a fallback: if we already have local hits,
+        // Remote sources are only fallbacks: if we already have local hits,
         // never hit the network. Offline-safe by construction.
         if (count($items) === 0) {
-            try {
-                $remote = $scraper->search($q);
-                $seen = [];
-                foreach ($remote as $r) {
-                    // cache remote songs into our DB so next search is local-only
-                    $slug = preg_replace('/[^a-z0-9-]/', '', strtolower((string) $r['slug']));
-                    $cached = DB::insertSong(
-                        $r['title'],
-                        $r['lyric_snippet'],
-                        '',
-                        'unlimitedworship',
-                        $slug ?: 'lagu-' . $r['id']
-                    );
-                    $seen[] = [
-                        'id' => $cached['id'],
-                        'title' => $r['title'],
-                        'slug' => $cached['slug'],
-                        'lyric' => $r['lyric_snippet'],
-                        'source' => 'unlimitedworship',
-                    ];
-                }
-                $items = array_merge($seen, $items);
-            } catch (Throwable $e) {
-                // unlimitedworship down → local-only results (possibly empty)
-                $items = [];
-            }
+            $items = array_merge($items, searchUnlimitedWorship($scraper, $q));
+        }
+        if (count($items) === 0) {
+            $items = array_merge($items, searchJrChord($q));
         }
         respond(['items' => array_map(fn ($s) => [
             'id' => $s['id'],
             'title' => $s['title'],
             'slug' => $s['slug'],
-            'lyric' => mb_substr($s['lyric'], 0, 120),
+            'lyric' => mb_substr((string) $s['lyric'], 0, 120),
             'source' => $s['source'],
         ], $items)]);
 
@@ -101,6 +79,25 @@ switch ($action) {
         $song = DB::getSong($id);
         if (!$song) {
             fail('Lagu tidak ditemukan.', 404);
+        }
+        // lazy full-detail fetch for remote-sourced songs (search caches only
+        // the snippet; the full lyric+chord is fetched once on demand)
+        if ($song['source'] !== 'manual' && !empty($song['source_ref'])) {
+            try {
+                if ($song['source'] === 'jrchord') {
+                    $d = (new JrChordScraper())->detail($song['source_ref']);
+                } else {
+                    $d = $scraper->detail((int) $song['id'], $song['slug']);
+                }
+                $fullLyric = $d['lyric'] ?? '';
+                if ($fullLyric !== '' && strlen($fullLyric) > strlen($song['lyric'])) {
+                    DB::updateSongContent($song['id'], $fullLyric, $d['chord'] ?? '');
+                    $song['lyric'] = $fullLyric;
+                    $song['chord'] = $d['chord'] ?? '';
+                }
+            } catch (Throwable $e) {
+                // offline: serve cached snippet as-is
+            }
         }
         respond([
             'id' => $song['id'],
@@ -177,4 +174,67 @@ switch ($action) {
 
     default:
         fail('Aksi tidak dikenal.', 404);
+}
+
+// ---- remote search helpers ----
+
+/** unlimitedworship.org fallback (may be Cloudflare-blocked → returns []). */
+function searchUnlimitedWorship(UnlimitedWorshipScraper $scraper, string $q): array
+{
+    try {
+        $remote = $scraper->search($q);
+        $out = [];
+        foreach ($remote as $r) {
+            $slug = preg_replace('/[^a-z0-9-]/', '', strtolower((string) $r['slug']));
+            $cached = DB::insertSong(
+                $r['title'],
+                (string) ($r['lyric_snippet'] ?? ''),
+                '',
+                'unlimitedworship',
+                $slug ?: 'lagu-' . $r['id'],
+                $r['url']
+            );
+            $out[] = [
+                'id' => $cached['id'],
+                'title' => $r['title'],
+                'slug' => $cached['slug'],
+                'lyric' => $r['lyric_snippet'] ?? '',
+                'source' => 'unlimitedworship',
+            ];
+        }
+        return $out;
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+/** jrchord.com fallback (plain HTML, always accessible). */
+function searchJrChord(string $q): array
+{
+    try {
+        $jr = new JrChordScraper();
+        $remote = $jr->search($q);
+        $out = [];
+        foreach ($remote as $r) {
+            $slug = preg_replace('/[^a-z0-9-]/', '', strtolower((string) $r['slug']));
+            $cached = DB::insertSong(
+                $r['title'],
+                '',
+                '',
+                'jrchord',
+                $slug ?: 'lagu-' . substr(md5($r['url']), 0, 6),
+                $r['url']
+            );
+            $out[] = [
+                'id' => $cached['id'],
+                'title' => $r['title'],
+                'slug' => $cached['slug'],
+                'lyric' => '',
+                'source' => 'jrchord',
+            ];
+        }
+        return $out;
+    } catch (Throwable $e) {
+        return [];
+    }
 }

@@ -141,7 +141,9 @@ class UnlimitedWorshipScraper
                 $slides[] = ['type' => 'lyric', 'lines' => $buffer];
                 $buffer = [];
             }
-            if (!$lastWasPause) {
+            // never a pause before any lyric slide (leading blank lines) and
+            // consecutive blank lines merge into one pause
+            if (!empty($slides) && !$lastWasPause) {
                 $slides[] = ['type' => 'pause'];
                 $lastWasPause = true;
             }
@@ -165,6 +167,151 @@ class UnlimitedWorshipScraper
 
     return $slides;
 }
+}
+
+/**
+ * JrChordScraper — second source: https://www.jrchord.com/
+ * (unlimitedworship.org & suaranafiri are behind bot protection; this one is plain HTML.)
+ */
+class JrChordScraper
+{
+    private string $baseUrl = 'https://www.jrchord.com';
+
+    private function fetch(string $url): string
+    {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            CURLOPT_TIMEOUT => 20,
+        ]);
+        $html = curl_exec($ch);
+        $errno = curl_errno($ch);
+        curl_close($ch);
+        if ($errno) {
+            throw new RuntimeException("cURL error ($errno)");
+        }
+        return $html;
+    }
+
+    private function dom(string $html): DOMXPath
+    {
+        $dom = new DOMDocument();
+        @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $html);
+        return new DOMXPath($dom);
+    }
+
+    /** @return array{id:string, slug:string, title:string, url:string} */
+    public function search(string $keyword): array
+    {
+        $xpath = $this->dom($this->fetch($this->baseUrl . '/?s=' . urlencode($keyword)));
+        $out = [];
+        $seen = [];
+        // non-song pages to skip
+        $blocked = ['daftar-lagu', 'request', 'privacy-policy', 'tentang', 'kontak', 'kategori'];
+        foreach ($xpath->query("//article//a[contains(@href, 'jrchord.com/')]") as $a) {
+            $href = trim($a->getAttribute('href'));
+            if (!preg_match('#jrchord\.com/([a-z0-9-]+)/?$#', $href, $m)) {
+                continue;
+            }
+            $slug = $m[1];
+            if (in_array($slug, $blocked, true) || isset($seen[$slug])) {
+                continue;
+            }
+            $seen[$slug] = true;
+            $title = trim($a->textContent) ?: $slug;
+            // title may include the artist on later lines ("Title" + newline + "Artist")
+            $firstLine = preg_split('/\R/', $title)[0];
+            $out[] = ['slug' => $slug, 'title' => trim($firstLine), 'url' => $href];
+            if (count($out) >= 10) {
+                break;
+            }
+        }
+        return $out;
+    }
+
+    /** @return array{title:string, lyric:string, chord:string} */
+    public function detail(string $url): array
+    {
+        $xpath = $this->dom($this->fetch($url));
+        $title = '';
+        $titles = $xpath->query("//h1");
+        if ($titles->length > 0) {
+            $title = trim($titles->item(0)->textContent);
+        }
+        $pre = '';
+        $pres = $xpath->query("//pre");
+        if ($pres->length > 0) {
+            $pre = trim($pres->item(0)->textContent);
+        }
+        // user wants lyrics only — chords are stripped out
+        return ['title' => $title ?: basename(parse_url($url, PHP_URL_PATH)), 'lyric' => $this->stripChords($pre), 'chord' => ''];
+    }
+
+    /**
+     * Removes chord-only lines and section labels from a JRChord <pre> block,
+     * keeping only the lyric lines.
+     */
+    private function stripChords(string $text): string
+    {
+        $lines = preg_split('/\R/', $text);
+        $out = [];
+        foreach ($lines as $line) {
+            $line = rtrim($line);
+            $t = trim($line);
+            if ($t === '') {
+                $out[] = ''; // keep blank line as section break
+                continue;
+            }
+            // heading "Chord <title>"
+            if (preg_match('/^Chord\s+/i', $t)) {
+                continue;
+            }
+            // section labels: Bait :, Reff :, Intro :, ...
+            if (preg_match('/^(intro|bait|reff|refrain|chorus|musik|interlude|ending|overtone|pre[- ]?chorus|jembatan|bridge|coda|instrumental)\s*:?$/i', $t)) {
+                continue;
+            }
+            // chord-only line: every whitespace-separated token is a chord symbol
+            if ($this->isChordLine($t)) {
+                continue;
+            }
+            $out[] = $line;
+        }
+        // collapse multiple blank lines to one
+        $clean = [];
+        $prevBlank = false;
+        foreach ($out as $line) {
+            if ($line === '') {
+                if ($prevBlank) {
+                    continue;
+                }
+                $prevBlank = true;
+            } else {
+                $prevBlank = false;
+            }
+            $clean[] = $line;
+        }
+        return implode("
+", $clean);
+    }
+
+    private function isChordLine(string $line): bool
+    {
+        $tokens = preg_split('/\s+/', trim($line));
+        if (count($tokens) === 0 || count($tokens) > 12) {
+            return false;
+        }
+        // every token must be a chord symbol (A-G with optional #/b, suffix, slash)
+        foreach ($tokens as $tok) {
+            if (!preg_match('/^[A-G](#|b)?(m|M|maj|min|dim|sus|aug|add)?(\d+)?(\/[A-G](#|b)?(m|M)?(\d+)?)?$/', $tok)) {
+                return false;
+            }
+        }
+        return true;
+    }
 }
 
 if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
