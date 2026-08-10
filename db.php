@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS songs (
     lyric      TEXT NOT NULL,
     chord      TEXT,
     metadata   JSON,
-    source     ENUM('manual','unlimitedworship','jrchord') NOT NULL DEFAULT 'manual',
+    source     ENUM('manual','unlimitedworship','jrchord','liriklagukristen') NOT NULL DEFAULT 'manual',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_title (title)
 ) ENGINE=InnoDB;

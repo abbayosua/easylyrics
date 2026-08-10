@@ -6,6 +6,10 @@ class UnlimitedWorshipScraper
 
     private function fetch(string $url): string
     {
+        // resolve relative path (hasil search berupa /slug/)
+        if (str_starts_with($url, '/')) {
+            $url = $this->baseUrl . $url;
+        }
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
@@ -179,6 +183,10 @@ class JrChordScraper
 
     private function fetch(string $url): string
     {
+        // resolve relative path (hasil search berupa /slug/)
+        if (str_starts_with($url, '/')) {
+            $url = $this->baseUrl . $url;
+        }
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
@@ -311,6 +319,112 @@ class JrChordScraper
             }
         }
         return true;
+    }
+}
+
+/**
+ * LirikLaguKristenScraper — third source: https://liriklagukristen.id/
+ * (WordPress, no bot protection; lyrics inside <div class="lyrics">).
+ */
+class LirikLaguKristenScraper
+{
+    private string $baseUrl = 'https://liriklagukristen.id';
+
+    private function fetch(string $url): string
+    {
+        // resolve relative path (hasil search berupa /slug/)
+        if (str_starts_with($url, '/')) {
+            $url = $this->baseUrl . $url;
+        }
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            CURLOPT_TIMEOUT => 20,
+        ]);
+        $html = curl_exec($ch);
+        $errno = curl_errno($ch);
+        curl_close($ch);
+        if ($errno) {
+            throw new RuntimeException("cURL error ($errno)");
+        }
+        return $html;
+    }
+
+    private function dom(string $html): DOMXPath
+    {
+        $dom = new DOMDocument();
+        @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $html);
+        return new DOMXPath($dom);
+    }
+
+    /** @return array{id:string, slug:string, title:string, url:string} */
+    public function search(string $keyword): array
+    {
+        $xpath = $this->dom($this->fetch($this->baseUrl . '/?s=' . urlencode($keyword)));
+        $out = [];
+        $seen = [];
+        // hasil pencarian: <a class="card" href="/slug/"><h2 class="card__title">Judul</h2>...</a>
+        foreach ($xpath->query("//a[contains(@class, 'card')]") as $a) {
+            $href = trim($a->getAttribute('href'));
+            if (!preg_match('#^/([a-z0-9-]+)/?$#', $href, $m)) {
+                continue;
+            }
+            $slug = $m[1];
+            if ($slug === '' || isset($seen[$slug])) {
+                continue;
+            }
+            $seen[$slug] = true;
+            $title = '';
+            $titles = $xpath->query(".//h2[contains(@class, 'card__title')]", $a);
+            if ($titles->length > 0) {
+                $title = trim($titles->item(0)->textContent);
+            }
+            $out[] = ['slug' => $slug, 'title' => $title ?: $slug, 'url' => $href];
+            if (count($out) >= 10) {
+                break;
+            }
+        }
+        return $out;
+    }
+
+    /** @return array{title:string, lyric:string, chord:string} */
+    public function detail(string $url): array
+    {
+        $xpath = $this->dom($this->fetch($url));
+
+        $title = '';
+        $titles = $xpath->query("//h1");
+        if ($titles->length > 0) {
+            $title = trim($titles->item(0)->textContent);
+        }
+
+        $lyric = '';
+        $lyrics = $xpath->query("//div[contains(@class, 'lyrics')]");
+        if ($lyrics->length > 0) {
+            // convert <br> to newlines, strip tags, normalize blank lines
+            $html = '';
+            foreach ($lyrics->item(0)->childNodes as $child) {
+                $html .= $child->ownerDocument->saveHTML($child);
+            }
+            $html = preg_replace('/<br\s*\/?>/i', "
+", $html);
+            $text = trim(strip_tags($html));
+            // collapse multiple blank lines to one
+            $text = preg_replace('/[
+]{3,}/', "
+
+", $text);
+            $lyric = $text;
+        }
+        return [
+            'title' => $title ?: basename(parse_url($url, PHP_URL_PATH)),
+            'lyric' => $lyric,
+            'chord' => '',
+        ];
     }
 }
 

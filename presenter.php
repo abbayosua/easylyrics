@@ -294,7 +294,7 @@ async function doSearch() {
         const el = document.createElement('div');
         el.className = 'lib-item';
         el.innerHTML = `<div class="lib-item-title">${esc(item.title)}</div>
-                        <div class="lib-item-sub">${esc(item.lyric || '')}${item.source === 'unlimitedworship' ? ' · unlimitedworship' : ' · manual'}</div>`;
+                        <div class="lib-item-sub">${esc(item.lyric || '')} · ${esc(item.source || '')}</div>`;
         el.onclick = async () => {
             list.querySelectorAll('.lib-item').forEach(x => x.classList.remove('active'));
             el.classList.add('active');

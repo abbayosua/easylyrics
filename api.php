@@ -66,6 +66,9 @@ switch ($action) {
         if (count($items) === 0) {
             $items = array_merge($items, searchJrChord($q));
         }
+        if (count($items) === 0) {
+            $items = array_merge($items, searchLirikLaguKristen($q));
+        }
         respond(['items' => array_map(fn ($s) => [
             'id' => $s['id'],
             'title' => $s['title'],
@@ -87,6 +90,8 @@ switch ($action) {
             try {
                 if ($song['source'] === 'jrchord') {
                     $d = (new JrChordScraper())->detail($song['source_ref']);
+                } elseif ($song['source'] === 'liriklagukristen') {
+                    $d = (new LirikLaguKristenScraper())->detail($song['source_ref']);
                 } else {
                     $d = $scraper->detail((int) $song['id'], $song['slug']);
                 }
@@ -201,6 +206,37 @@ function searchUnlimitedWorship(UnlimitedWorshipScraper $scraper, string $q): ar
                 'slug' => $cached['slug'],
                 'lyric' => $r['lyric_snippet'] ?? '',
                 'source' => 'unlimitedworship',
+            ];
+        }
+        return $out;
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
+/** liriklagukristen.id fallback (WordPress, plain HTML). */
+function searchLirikLaguKristen(string $q): array
+{
+    try {
+        $lr = new LirikLaguKristenScraper();
+        $remote = $lr->search($q);
+        $out = [];
+        foreach ($remote as $r) {
+            $slug = preg_replace('/[^a-z0-9-]/', '', strtolower((string) $r['slug']));
+            $cached = DB::insertSong(
+                $r['title'],
+                '',
+                '',
+                'liriklagukristen',
+                $slug ?: 'lagu-' . substr(md5($r['url']), 0, 6),
+                $r['url']
+            );
+            $out[] = [
+                'id' => $cached['id'],
+                'title' => $r['title'],
+                'slug' => $cached['slug'],
+                'lyric' => '',
+                'source' => 'liriklagukristen',
             ];
         }
         return $out;
