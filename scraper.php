@@ -279,7 +279,7 @@ class JrChordScraper
                 continue;
             }
             // section labels: Bait :, Reff :, Intro :, ...
-            if (preg_match('/^(intro|bait|reff|refrain|chorus|musik|interlude|ending|overtone|pre[- ]?chorus|jembatan|bridge|coda|instrumental)\s*:?$/i', $t)) {
+            if (preg_match('/^(intro|bait|reff|refrain|chorus|verse|musik|interlude|ending|overtone|pre[- ]?chorus|jembatan|bridge|coda|instrumental|outro)\s*:?$/i', $t)) {
                 continue;
             }
             // chord-only line: every whitespace-separated token is a chord symbol
@@ -319,6 +319,68 @@ class JrChordScraper
             }
         }
         return true;
+    }
+    /**
+     * Fetches detail pages IN PARALLEL (curl_multi) and returns the first
+     * lyric line of each song — dipakai sebagai excerpt hasil search.
+     *
+     * @param array<int, array{slug:string,title:string,url:string}> $items
+     * @return array<string, string> slug => excerpt
+     */
+    public function excerpts(array $items): array
+    {
+        $mh = curl_multi_init();
+        $handles = [];
+        foreach ($items as $i => $it) {
+            $url = str_starts_with($it['url'], '/') ? $this->baseUrl . $it['url'] : $it['url'];
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                CURLOPT_TIMEOUT => 8,
+            ]);
+            curl_multi_add_handle($mh, $ch);
+            $handles[] = ['ch' => $ch, 'slug' => $it['slug']];
+        }
+        $running = null;
+        do {
+            curl_multi_exec($mh, $running);
+            curl_multi_select($mh, 0.1);
+        } while ($running > 0);
+
+        $out = [];
+        foreach ($handles as $h) {
+            $html = curl_multi_getcontent($h['ch']);
+            curl_multi_remove_handle($mh, $h['ch']);
+            $slug = $h['slug'];
+            if (!$html) {
+                continue;
+            }
+            $dom = new DOMDocument();
+            @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $html);
+            $xp = new DOMXPath($dom);
+            $pres = $xp->query("//pre");
+            if ($pres->length === 0) {
+                continue;
+            }
+            $lyric = $this->stripChords(trim($pres->item(0)->textContent));
+            // ambil baris lirik pertama yang tidak kosong
+            $first = '';
+            foreach (preg_split('/\R/', $lyric) as $ln) {
+                $ln = trim($ln);
+                if ($ln !== '') {
+                    $first = $ln;
+                    break;
+                }
+            }
+            if ($first !== '') {
+                $out[$slug] = mb_substr($first, 0, 120);
+            }
+        }
+        curl_multi_close($mh);
+        return $out;
     }
 }
 
@@ -383,7 +445,12 @@ class LirikLaguKristenScraper
             if ($titles->length > 0) {
                 $title = trim($titles->item(0)->textContent);
             }
-            $out[] = ['slug' => $slug, 'title' => $title ?: $slug, 'url' => $href];
+            $excerpt = '';
+            $excerpts = $xpath->query(".//p[contains(@class, 'card__excerpt')]", $a);
+            if ($excerpts->length > 0) {
+                $excerpt = trim($excerpts->item(0)->textContent);
+            }
+            $out[] = ['slug' => $slug, 'title' => $title ?: $slug, 'url' => $href, 'excerpt' => $excerpt];
             if (count($out) >= 10) {
                 break;
             }
@@ -427,6 +494,9 @@ class LirikLaguKristenScraper
         ];
     }
 }
+
+
+
 
 if (PHP_SAPI === 'cli' && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
     $scraper = new UnlimitedWorshipScraper();

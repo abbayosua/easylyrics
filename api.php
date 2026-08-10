@@ -230,19 +230,18 @@ function searchLirikLaguKristen(string $q): array
         $out = [];
         foreach ($remote as $r) {
             $slug = preg_replace('/[^a-z0-9-]/', '', strtolower((string) $r['slug']));
-            $cached = DB::insertSong(
-                $r['title'],
-                '',
-                '',
-                'liriklagukristen',
-                $slug ?: 'lagu-' . substr(md5($r['url']), 0, 6),
-                $r['url']
-            );
+            $excerpt = mb_substr((string) ($r['excerpt'] ?? ''), 0, 120);
+            $existing = DB::getSongBySlug($slug);
+            if ($existing && !empty($excerpt) && $existing['lyric'] === '') {
+                DB::updateSongContent($existing['id'], $excerpt, '');
+            }
+            $cached = $existing ? ['id' => $existing['id'], 'slug' => $existing['slug'], 'title' => $existing['title']]
+                : DB::insertSong($r['title'], $excerpt, '', 'liriklagukristen', $slug ?: 'lagu-' . substr(md5($r['url']), 0, 6), $r['url']);
             $out[] = [
                 'id' => $cached['id'],
                 'title' => $r['title'],
                 'slug' => $cached['slug'],
-                'lyric' => '',
+                'lyric' => $excerpt,
                 'source' => 'liriklagukristen',
             ];
         }
@@ -258,22 +257,25 @@ function searchJrChord(string $q): array
     try {
         $jr = new JrChordScraper();
         $remote = $jr->search($q);
+        // excerpt: fetch detail pages PARALLEL (curl_multi), ambil baris
+        // lirik pertama — supaya hasil search bisa dibedakan
+        $excerpts = $jr->excerpts($remote);
         $out = [];
         foreach ($remote as $r) {
             $slug = preg_replace('/[^a-z0-9-]/', '', strtolower((string) $r['slug']));
-            $cached = DB::insertSong(
-                $r['title'],
-                '',
-                '',
-                'jrchord',
-                $slug ?: 'lagu-' . substr(md5($r['url']), 0, 6),
-                $r['url']
-            );
+            $excerpt = $excerpts[$r['slug']] ?? '';
+            // update kalau sudah pernah di-cache (hindari duplikat slug)
+            $existing = DB::getSongBySlug($slug);
+            if ($existing && !empty($excerpt) && $existing['lyric'] === '') {
+                DB::updateSongContent($existing['id'], $excerpt, '');
+            }
+            $cached = $existing ? ['id' => $existing['id'], 'slug' => $existing['slug'], 'title' => $existing['title']]
+                : DB::insertSong($r['title'], $excerpt, '', 'jrchord', $slug ?: 'lagu-' . substr(md5($r['url']), 0, 6), $r['url']);
             $out[] = [
                 'id' => $cached['id'],
                 'title' => $r['title'],
                 'slug' => $cached['slug'],
-                'lyric' => '',
+                'lyric' => $excerpts[$r['slug']] ?? '',
                 'source' => 'jrchord',
             ];
         }

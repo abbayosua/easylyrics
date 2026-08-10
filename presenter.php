@@ -76,7 +76,10 @@ $books = [
         .lib-item:hover { background: #1a1a1a; }
         .lib-item.active { background: #1e1b4b; border-left: 3px solid #a78bfa; }
         .lib-item-title { font-size: 14px; font-weight: 500; color: #ccc; }
-        .lib-item-sub { font-size: 11px; color: #555; margin-top: 2px; }
+        .lib-item-sub {
+            font-size: 11px; color: #555; margin-top: 2px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
         .lib-empty { padding: 14px; color: #555; font-size: 13px; line-height: 1.5; }
 
         .src-group { border-bottom: 1px solid #1a1a1a; }
