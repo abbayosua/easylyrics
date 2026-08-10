@@ -78,7 +78,8 @@ $books = [
         .lib-item-title { font-size: 14px; font-weight: 500; color: #ccc; }
         .lib-item-sub {
             font-size: 11px; color: #555; margin-top: 2px;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden; line-height: 1.4;
         }
         .lib-empty { padding: 14px; color: #555; font-size: 13px; line-height: 1.5; }
 
