@@ -29,6 +29,7 @@
         .slide-area {
             flex: 1; display: flex; align-items: center; justify-content: center;
             position: relative; cursor: pointer;
+            container-type: size;   /* cqw/cqi mengikuti container, bukan viewport */
         }
         .slide {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -37,8 +38,10 @@
         }
         .slide-ref { font-size: clamp(18px, 2vw, 28px); color: #a78bfa; font-family: -apple-system, sans-serif; font-weight: 700; }
         .slide-text {
-            font-size: 48px; line-height: 1.4; font-weight: 400;
+            /* base: ikut ukuran container (7% lebar / 5% tinggi) — OBS-safe */
+            font-size: min(7cqw, 5cqi); line-height: 1.4; font-weight: 400;
             text-shadow: 0 2px 8px rgba(0,0,0,.5); max-width: 90%;
+            overflow-wrap: break-word;
         }
         .slide-title {
             position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
@@ -79,6 +82,7 @@ const $ = id => document.getElementById(id);
 let slides = [];
 let total = 0;
 let current = 0;
+let fitted = {};    // cache font-size per slide index — jangan re-fit yang sama
 let lastKey = '';   // last updated_at dari server, deteksi perubahan konten
 
 async function poll() {
@@ -91,14 +95,21 @@ async function poll() {
             return;
         }
         // konten ganti? (presenter set presentasi baru -> updated_at berubah)
+        let contentChanged = false;
         if (s.updated_at !== lastKey) {
             lastKey = s.updated_at;
             slides = s.slides;
             total = s.slides.length;
+            fitted = {}; // konten baru → reset cache ukuran font
             $('toolbarTitle').textContent = s.title || '';
             $('slideTitle').textContent = s.title || '';
+            contentChanged = true;
         }
-        goToLocal(s.slide);
+        // render hanya saat benar-benar berubah (konten baru ATAU index baru) —
+        // kalau tidak, poll tiap 500ms bikin teks loncat (font reset ke 80px)
+        if (contentChanged || s.slide !== current) {
+            goToLocal(s.slide);
+        }
     } catch (e) {
         // server mati: diam saja, slide terakhir tetap tampil
     }
@@ -128,6 +139,8 @@ function goToLocal(n) {
         $('slideText').textContent = s.lines.join('\n');
     }
     $('counter').textContent = `${n + 1} / ${total}`;
+    // selalu fit-ulang: mulai dari ukuran sekarang (cache) → tidak ada
+    // lompatan ke 80px, dan tidak pernah overflow dari ukuran basi
     fitText();
 }
 
@@ -142,12 +155,18 @@ function fitText() {
     const refH = ref.style.display === 'none' ? 0 : ref.offsetHeight;
     const availH = slide.clientHeight - padV - refH - gap - 10;
     if (availH <= 0) return;
-    text.style.fontSize = '80px';
-    let size = 80;
-    while (size > 12 && text.scrollHeight > availH) {
+    // mulai dari ukuran terhitung sekarang (cqw/cqi → px via getComputedStyle) —
+    // hanya mengecil kalau perlu, tidak pernah loncat ke 80px (anti "bergerak-gerak")
+    let size = parseFloat(getComputedStyle(text).fontSize) || 48;
+    if (size > 64) size = 64;
+    text.style.fontSize = size + 'px';
+    // tanpa floor 12px: bisa mengecil sampai 6px supaya ayat super panjang
+    // tetap muat di window/container kecil
+    while (size > 6 && text.scrollHeight > availH) {
         size--;
         text.style.fontSize = size + 'px';
     }
+    fitted[current] = size;
 }
 
 // navigasi langsung dari proyektor (klik/keys) — kirim balik ke state

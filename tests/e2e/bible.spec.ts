@@ -76,3 +76,81 @@ test.describe("Alkitab", () => {
     await expect(page.getByTestId("previewLines")).toContainText("Adalah seorang Farisi");
   });
 });
+
+test.describe("Alkitab fit-text", () => {
+  test("ayat terpanjang tidak overflow (font mengecil otomatis)", async ({page, context}) => {
+    await page.goto("presenter.php");
+    await page.getByTestId("tabBible").click();
+    await page.getByTestId("bookSel").selectOption("Yoh");
+    await page.getByTestId("chapSel").selectOption("3");
+    await page.getByTestId("btnLoadChapter").click();
+    await expect(page.getByTestId("counter")).toHaveText("1 / 36", {timeout: 30_000});
+
+    const pro = await context.newPage();
+    await pro.goto("projector.php");
+    await expect
+      .poll(async () => pro.locator("#slideText").textContent())
+      .toContain("Adalah seorang Farisi", {timeout: 15_000});
+
+    // ambil daftar slide dari state, cari indeks ayat terpanjang
+    const r = await page.request.get("api.php?action=state_get");
+    const state = await r.json();
+    let longest = 0, maxLen = 0;
+    state.slides.forEach((s: any, i: number) => {
+      const len = (s.lines || []).join("").length;
+      if (len > maxLen) { maxLen = len; longest = i; }
+    });
+
+    // navigasi ke slide terpanjang via state_nav (seperti klik proyektor)
+    await page.request.post("api.php?action=state_nav", {data: {slide: longest}});
+    await expect
+      .poll(async () => pro.locator("#counter").textContent())
+      .toContain(`${longest + 1} / 36`, {timeout: 15_000});
+
+    // teks tidak boleh melebihi area slide (font harus mengecil)
+    const overflow = await pro.evaluate(() => {
+      const slide = document.getElementById("slide") as HTMLElement;
+      return slide.scrollHeight - slide.clientHeight;
+    });
+    expect(overflow).toBeLessThanOrEqual(2);
+  });
+});
+
+test.describe("Alkitab fit-text viewport kecil", () => {
+  test.use({viewport: {width: 640, height: 400}});
+
+  test("ayat terpanjang tetap muat di window kecil", async ({page, context}) => {
+    await page.goto("presenter.php");
+    await page.getByTestId("tabBible").click();
+    await page.getByTestId("bookSel").selectOption("Yoh");
+    await page.getByTestId("chapSel").selectOption("3");
+    await page.getByTestId("btnLoadChapter").click();
+    await expect(page.getByTestId("counter")).toHaveText("1 / 36", {timeout: 30_000});
+
+    const pro = await context.newPage();
+    await pro.setViewportSize({width: 640, height: 400});
+    await pro.goto("projector.php");
+    await expect
+      .poll(async () => pro.locator("#slideText").textContent())
+      .toContain("Adalah seorang Farisi", {timeout: 15_000});
+
+    const r = await page.request.get("api.php?action=state_get");
+    const state = await r.json();
+    let longest = 0, maxLen = 0;
+    state.slides.forEach((s: any, i: number) => {
+      const len = (s.lines || []).join("").length;
+      if (len > maxLen) { maxLen = len; longest = i; }
+    });
+
+    await page.request.post("api.php?action=state_nav", {data: {slide: longest}});
+    await expect
+      .poll(async () => pro.locator("#counter").textContent())
+      .toContain(`${longest + 1} / 36`, {timeout: 15_000});
+
+    const overflow = await pro.evaluate(() => {
+      const slide = document.getElementById("slide") as HTMLElement;
+      return slide.scrollHeight - slide.clientHeight;
+    });
+    expect(overflow).toBeLessThanOrEqual(2);
+  });
+});
