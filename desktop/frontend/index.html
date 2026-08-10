@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <link rel="stylesheet" href="/style.css"/>
+    <title>EasyLyrics — Operator</title>
+</head>
+<body>
+    <div class="header">
+        <div class="header-title">EasyLyrics</div>
+        <div class="header-actions">
+            <button id="btnProjector" class="btn btn-projector">&#9654; Proyektor</button>
+            <button id="btnFullscreen" class="btn btn-fullscreen">&#10530; Fullscreen</button>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="library-panel">
+            <div class="lib-tabs">
+                <button id="tabSongs" class="lib-tab active">Lagu</button>
+                <button id="tabBible" class="lib-tab">Alkitab</button>
+            </div>
+
+            <div id="panelSongs" class="lib-panel">
+                <div class="lib-search">
+                    <input id="songSearch" type="text" placeholder="Cari lagu..."/>
+                    <button id="btnSearch" class="btn btn-small">Cari</button>
+                    <button id="btnAddSong" class="btn btn-small btn-add">+ Tambah</button>
+                </div>
+                <div class="lib-list" id="songList"></div>
+            </div>
+
+            <div id="panelBible" class="lib-panel" style="display:none;">
+                <div class="lib-search">
+                    <select id="bookSelect"></select>
+                    <select id="chapterSelect"></select>
+                    <button id="btnLoadChapter" class="btn btn-small">Muat</button>
+                </div>
+                <div class="lib-hint">Pilih kitab & pasal, lalu klik Muat.</div>
+            </div>
+        </div>
+
+        <div class="preview-panel">
+            <div class="preview-current">
+                <div class="empty-hint" id="emptyHint">Pilih lagu atau pasal Alkitab</div>
+                <div class="preview-ref" id="previewRef" style="display:none;"></div>
+                <div id="previewLines"></div>
+            </div>
+            <div class="preview-next" id="previewNext" style="display:none;">
+                <div class="preview-next-label">Next</div>
+                <div class="preview-next-text" id="previewNextText"></div>
+            </div>
+        </div>
+
+        <div class="slide-list" id="slideList"></div>
+    </div>
+
+    <div class="controls">
+        <button id="btnFirst">&#8962;</button>
+        <button id="btnPrev">&#9664;</button>
+        <span class="counter" id="counter">- / -</span>
+        <button id="btnNext">&#9654;</button>
+        <button id="btnLast">&#8963;</button>
+    </div>
+
+    <div class="modal-overlay" id="addModal" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <span>Tambah Lagu Manual</span>
+                <button id="btnCloseModal" class="modal-close">&times;</button>
+            </div>
+            <label class="modal-label">Judul</label>
+            <input id="inpTitle" class="modal-input" type="text" placeholder="Judul lagu"/>
+            <label class="modal-label">Lirik (copy-paste, baris kosong = jeda antar bagian)</label>
+            <textarea id="inpLyric" class="modal-input modal-textarea" placeholder="Lirik..."></textarea>
+            <label class="modal-label">Chord (opsional)</label>
+            <textarea id="inpChord" class="modal-input modal-textarea" placeholder="Chord..."></textarea>
+            <div class="modal-actions">
+                <button id="btnSaveSong" class="btn btn-small">Simpan</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

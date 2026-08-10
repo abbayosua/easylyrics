@@ -1,0 +1,73 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
+body {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    background: #000;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+}
+
+.toolbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    background: rgba(0,0,0,0.7);
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.toolbar:hover { opacity: 1; }
+.toolbar-title { font-size: 16px; font-weight: 600; color: #aaa; }
+.toolbar-actions { display: flex; gap: 10px; align-items: center; }
+.toolbar-counter { font-size: 14px; color: #888; }
+
+.slide-area {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    cursor: pointer;
+}
+
+.slide {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 60px 80px;
+    text-align: center;
+    width: 100%;
+    max-width: 900px;
+    align-self: stretch;
+    overflow: hidden;
+}
+
+.slide-text {
+    font-size: 48px;
+    line-height: 1.4;
+    font-weight: 400;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    max-width: 90%;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.slide.active { animation: fadeIn 0.3s ease; }
+
+.slide-ref {
+    font-size: clamp(18px, 2vw, 28px);
+    color: #a78bfa;
+    font-family: -apple-system, sans-serif;
+    font-weight: 700;
+}
