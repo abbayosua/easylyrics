@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/bibleclient.php';
 require_once __DIR__ . '/scraper.php';
 
 /**

@@ -148,29 +148,29 @@ $books = [
 <div class="main">
     <div class="library">
         <div class="tabs">
-            <button class="tab active" id="tabSongs" onclick="switchTab('songs')">Lagu</button>
-            <button class="tab" id="tabBible" onclick="switchTab('bible')">Alkitab</button>
+            <button class="tab active" id="tabSongs" data-testid="tabSongs" onclick="switchTab('songs')">Lagu</button>
+            <button class="tab" id="tabBible" data-testid="tabBible" onclick="switchTab('bible')">Alkitab</button>
         </div>
 
         <div class="lib-panel" id="panelSongs">
             <div class="lib-search">
-                <input id="q" placeholder="Cari lagu..." onkeydown="if(event.key==='Enter')doSearch()"/>
-                <button class="btn btn-primary" onclick="doSearch()">Cari</button>
+                <input id="q" placeholder="Cari lagu..." data-testid="songSearch" onkeydown="if(event.key==='Enter')doSearch()"/>
+                <button class="btn btn-primary" data-testid="btnSearch" onclick="doSearch()">Cari</button>
             </div>
             <div class="lib-list" id="songList"><div class="lib-empty">Ketik untuk mencari, atau tambah lagu manual.</div></div>
         </div>
 
         <div class="lib-panel" id="panelBible" style="display:none">
             <div class="lib-search">
-                <select id="bookSel"><option value="">-- Kitab --</option>
+                <select id="bookSel" data-testid="bookSel"><option value="">-- Kitab --</option>
                     <?php foreach ($books as $b): ?>
                     <option value="<?= htmlspecialchars($b[0]) ?>"><?= htmlspecialchars($b[1]) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <select id="chapSel"><option value="">Pasal</option></select>
+                <select id="chapSel" data-testid="chapSel"><option value="">Pasal</option></select>
             </div>
             <div class="lib-search">
-                <button class="btn btn-primary" style="width:100%" onclick="loadChapter()">Tampilkan Pasal</button>
+                <button class="btn btn-primary" style="width:100%" data-testid="btnLoadChapter" onclick="loadChapter()">Tampilkan Pasal</button>
             </div>
             <div class="lib-empty">Pilih kitab & pasal. Ayat ter-cache otomatis di MySQL.</div>
         </div>
@@ -179,17 +179,17 @@ $books = [
     <div class="stage">
         <div class="preview" id="preview">
             <div class="preview-title" id="previewTitle"></div>
-            <div class="empty-hint" id="emptyHint">Pilih lagu atau pasal untuk memulai</div>
-            <div class="preview-ref" id="previewRef" style="display:none"></div>
-            <div id="previewLines"></div>
+            <div class="empty-hint" id="emptyHint" data-testid="emptyHint">Pilih lagu atau pasal untuk memulai</div>
+            <div class="preview-ref" id="previewRef" style="display:none" data-testid="previewRef"></div>
+            <div id="previewLines" data-testid="previewLines"></div>
         </div>
         <div class="slide-list" id="slideList"></div>
         <div class="controls">
-            <button onclick="goTo(0)">&#8962;</button>
-            <button onclick="nav(-1)">&#9664;</button>
-            <span class="counter" id="counter">- / -</span>
-            <button onclick="nav(1)">&#9654;</button>
-            <button onclick="goTo(total-1)">&#8963;</button>
+            <button data-testid="btnFirst" onclick="goTo(0)">&#8962;</button>
+            <button data-testid="btnPrev" onclick="nav(-1)">&#9664;</button>
+            <span class="counter" id="counter" data-testid="counter">- / -</span>
+            <button data-testid="btnNext" onclick="nav(1)">&#9654;</button>
+            <button data-testid="btnLast" onclick="goTo(total-1)">&#8963;</button>
         </div>
     </div>
 </div>
@@ -341,7 +341,8 @@ async function saveSong() {
     closeModal();
     const song = await api('get_song', { id: r.id });
     present(song.title, song.title, song.slides);
-    $('q').value = '';
+    // isi input dengan judul baru lalu cari supaya lagu muncul di daftar
+    $('q').value = title;
     doSearch();
 }
 
@@ -366,6 +367,27 @@ document.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); nav(1); }
     if (e.key === 'Escape') closeModal();
 });
+
+// ---- sinkron balik dari proyektor (proyektor bisa navigasi sendiri) ----
+let stateKey = '';
+async function pollState() {
+    try {
+        const s = await api('state_get');
+        if (s.type === 'idle' || !s.slides || s.slides.length === 0) return;
+        if (s.updated_at !== stateKey) {
+            // konten presentasi baru dari pihak lain (mis. tab presenter kedua)
+            stateKey = s.updated_at;
+            slides = s.slides;
+            total = s.slides.length;
+            $('previewTitle').textContent = s.title || '';
+        }
+        if (typeof s.slide === 'number' && s.slide !== current && s.slide >= 0 && s.slide < total) {
+            setSlide(s.slide, false);
+        }
+    } catch (e) { /* server mati: diam */ }
+}
+setInterval(pollState, 1000);
+pollState();
 </script>
 </body>
 </html>

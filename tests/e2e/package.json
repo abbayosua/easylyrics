@@ -1,0 +1,13 @@
+{
+  "name": "easylyrics-e2e",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:bible": "playwright test bible.spec.ts",
+    "test:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.0",
+    "mysql2": "^3.14.0"
+  }
+}

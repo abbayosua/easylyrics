@@ -1,0 +1,60 @@
+import {test, expect} from "@playwright/test";
+
+/**
+ * E2E — Flow 3: Tambah Lagu Manual (via UI modal)
+ * Simpan → langsung presentasi + tersimpan & bisa dicari lagi.
+ */
+
+test.describe("Tambah Lagu Manual", () => {
+  test("simpan → langsung tampil presentasi", async ({page}) => {
+    const t = `Lagu E2E Add ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    await page.goto("presenter.php");
+
+    // buka modal
+    await page.getByRole("button", {name: "+ Tambah Lagu"}).click();
+    await expect(page.locator("#addModal")).toBeVisible();
+
+    // isi form
+    await page.locator("#mTitle").fill(t);
+    await page.locator("#mLyric").fill("Lirik pertama add\nLirik kedua add\n\nLirik ketiga add");
+    await page.locator("#mChord").fill("C G Am");
+
+    // simpan
+    await page.getByRole("button", {name: "Simpan & Tampilkan"}).click();
+
+    // langsung presentasi: counter + slide 1
+    await expect(page.getByTestId("counter")).toHaveText(/1 \//, {timeout: 10_000});
+    await expect(page.getByTestId("previewLines")).toContainText("Lirik pertama add");
+    await expect(page.getByTestId("previewLines")).toContainText("Lirik kedua add");
+  });
+
+  test("judul kosong → ditolak (alert), modal tetap terbuka", async ({page}) => {
+    await page.goto("presenter.php");
+    await page.getByRole("button", {name: "+ Tambah Lagu"}).click();
+
+    await page.locator("#mTitle").fill("");
+    await page.locator("#mLyric").fill("lirik saja");
+
+    page.once("dialog", async d => {
+      expect(d.message()).toContain("wajib diisi");
+      await d.dismiss();
+    });
+    await page.getByRole("button", {name: "Simpan & Tampilkan"}).click();
+    await expect(page.locator("#addModal")).toBeVisible();
+  });
+
+  test("lagu tersimpan bisa dicari lagi", async ({page}) => {
+    const t = `Lagu E2E Searchable ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    await page.goto("presenter.php");
+
+    await page.getByRole("button", {name: "+ Tambah Lagu"}).click();
+    await page.locator("#mTitle").fill(t);
+    await page.locator("#mLyric").fill("Lirik searchable");
+    await page.getByRole("button", {name: "Simpan & Tampilkan"}).click();
+    await expect(page.getByTestId("counter")).toHaveText(/1 \//, {timeout: 10_000});
+
+    // setelah simpan, saveSong memanggil doSearch dengan query judul
+    const item = page.locator(".lib-item", {hasText: t});
+    await expect(item.first()).toBeVisible({timeout: 10_000});
+  });
+});
