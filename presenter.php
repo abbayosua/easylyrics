@@ -79,6 +79,22 @@ $books = [
         .lib-item-sub { font-size: 11px; color: #555; margin-top: 2px; }
         .lib-empty { padding: 14px; color: #555; font-size: 13px; line-height: 1.5; }
 
+        .src-group { border-bottom: 1px solid #1a1a1a; }
+        .src-head {
+            padding: 8px 14px; font-size: 12px; font-weight: 700; color: #a78bfa;
+            text-transform: uppercase; letter-spacing: .5px;
+            background: #141414; position: sticky; top: 0; z-index: 1;
+        }
+        .src-count { color: #666; font-weight: 600; }
+        .src-body { min-height: 32px; }
+        .src-spinner {
+            width: 16px; height: 16px; margin: 10px auto;
+            border: 2px solid #333; border-top-color: #a78bfa;
+            border-radius: 50%; animation: spin .7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .src-err { padding: 8px 14px; color: #664444; font-size: 12px; }
+
         .stage { flex: 1; display: flex; flex-direction: column; min-width: 0; }
         .preview {
             flex: 1; display: flex; flex-direction: column;
@@ -278,31 +294,59 @@ function render() {
     if (act) act.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
-// ---------------- search (local DB; unlimitedworship hanya fallback) ----------------
+// ---------------- search (4 sumber PARALEL, grup per situs) ----------------
+const SOURCES = [
+    { key: 'local',            label: 'Database Lokal' },
+    { key: 'unlimitedworship', label: 'unlimitedworship.org' },
+    { key: 'jrchord',          label: 'jrchord.com' },
+    { key: 'liriklagukristen', label: 'liriklagukristen.id' },
+];
+
 async function doSearch() {
     const q = $('q').value.trim();
     const list = $('songList');
     if (!q) return;
-    list.innerHTML = '<div class="lib-empty">Mencari...</div>';
-    const r = await api('search', { q });
-    if (!r.items || r.items.length === 0) {
-        list.innerHTML = '<div class="lib-empty">Tidak ditemukan. Coba kata lain atau tambah manual.</div>';
-        return;
-    }
-    list.innerHTML = '';
-    r.items.forEach(item => {
-        const el = document.createElement('div');
-        el.className = 'lib-item';
-        el.innerHTML = `<div class="lib-item-title">${esc(item.title)}</div>
-                        <div class="lib-item-sub">${esc(item.lyric || '')} · ${esc(item.source || '')}</div>`;
-        el.onclick = async () => {
-            list.querySelectorAll('.lib-item').forEach(x => x.classList.remove('active'));
-            el.classList.add('active');
-            const song = await api('get_song', { id: item.id });
-            present(song.title, song.title, song.slides);
-        };
-        list.appendChild(el);
-    });
+
+    // render grup + spinner per situs
+    list.innerHTML = SOURCES.map(s =>
+        `<div class="src-group" data-src="${s.key}">
+            <div class="src-head">${esc(s.label)} <span class="src-count"></span></div>
+            <div class="src-body"><div class="src-spinner"></div></div>
+        </div>`
+    ).join('');
+
+    // query semua sumber sekaligus (paralel); tiap grup mengisi sendiri
+    await Promise.all(SOURCES.map(async s => {
+        const group = list.querySelector(`.src-group[data-src="${s.key}"]`);
+        let items = [];
+        let err = false;
+        try {
+            const r = await api('search', { q, source: s.key });
+            items = r.items || [];
+        } catch (e) {
+            err = true;
+        }
+        group.querySelector('.src-count').textContent = err ? '· gagal' : (items.length ? `· ${items.length}` : '· kosong');
+        const body = group.querySelector('.src-body');
+        body.innerHTML = '';
+        if (err) {
+            body.innerHTML = '<div class="src-err">Gagal mengambil (situs down?)</div>';
+            return;
+        }
+        items.forEach(item => {
+            const el = document.createElement('div');
+            el.className = 'lib-item';
+            el.innerHTML = `<div class="lib-item-title">${esc(item.title)}</div>
+                            <div class="lib-item-sub">${esc(item.lyric || '')}</div>`;
+            el.onclick = async () => {
+                list.querySelectorAll('.lib-item').forEach(x => x.classList.remove('active'));
+                el.classList.add('active');
+                const song = await api('get_song', { id: item.id });
+                present(song.title, song.title, song.slides);
+            };
+            body.appendChild(el);
+        });
+    }));
 }
 
 // ---------------- bible ----------------

@@ -51,31 +51,38 @@ $scraper = new UnlimitedWorshipScraper();
 switch ($action) {
 
     // ------------------------------------------------------------ search
+    // Search per sumber — frontend memanggil 4x (local, unlimitedworship,
+    // jrchord, liriklagukristen) SECARA PARALEL dan menampilkan tiap grup
+    // dengan spinner-nya sendiri.
     case 'search':
         $q = trim($_GET['q'] ?? '');
+        $source = $_GET['source'] ?? 'local';
         if ($q === '') {
-            respond(['items' => []]);
+            respond(['source' => $source, 'items' => []]);
         }
-        $items = DB::searchSongs($q, 50);
+        switch ($source) {
+            case 'local':
+                $items = array_map(fn ($s) => [
+                    'id' => $s['id'],
+                    'title' => $s['title'],
+                    'slug' => $s['slug'],
+                    'lyric' => mb_substr((string) $s['lyric'], 0, 120),
+                    'source' => $s['source'],
+                ], DB::searchSongs($q, 50));
+                respond(['source' => 'local', 'items' => $items]);
 
-        // Remote sources are only fallbacks: if we already have local hits,
-        // never hit the network. Offline-safe by construction.
-        if (count($items) === 0) {
-            $items = array_merge($items, searchUnlimitedWorship($scraper, $q));
+            case 'unlimitedworship':
+                respond(['source' => 'unlimitedworship', 'items' => searchUnlimitedWorship($scraper, $q)]);
+
+            case 'jrchord':
+                respond(['source' => 'jrchord', 'items' => searchJrChord($q)]);
+
+            case 'liriklagukristen':
+                respond(['source' => 'liriklagukristen', 'items' => searchLirikLaguKristen($q)]);
+
+            default:
+                fail('Sumber tidak dikenal.', 404);
         }
-        if (count($items) === 0) {
-            $items = array_merge($items, searchJrChord($q));
-        }
-        if (count($items) === 0) {
-            $items = array_merge($items, searchLirikLaguKristen($q));
-        }
-        respond(['items' => array_map(fn ($s) => [
-            'id' => $s['id'],
-            'title' => $s['title'],
-            'slug' => $s['slug'],
-            'lyric' => mb_substr((string) $s['lyric'], 0, 120),
-            'source' => $s['source'],
-        ], $items)]);
 
     // ----------------------------------------------------------- get_song
     case 'get_song':

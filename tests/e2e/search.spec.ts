@@ -19,17 +19,30 @@ test.describe("Cari Lagu", () => {
     await page.getByTestId("songSearch").fill(TITLE);
     await page.getByTestId("btnSearch").click();
 
-    const item = page.locator(".lib-item", {hasText: TITLE});
+    const item = page.locator('.src-group[data-src="local"] .lib-item', {hasText: TITLE});
     await expect(item).toBeVisible({timeout: 15_000});
-    await expect(item).toContainText("manual");
   });
 
-  test("kata yang tidak ada → pesan tidak ditemukan", async ({page}) => {
+  test("kata yang tidak ada → grup local menampilkan 'kosong'", async ({page}) => {
     await page.goto("presenter.php");
     await page.getByTestId("songSearch").fill("zygote-e2e-abcdef");
     await page.getByTestId("btnSearch").click();
 
-    await expect(page.locator("#songList .lib-empty")).toContainText("Tidak ditemukan", {timeout: 45_000});
+    // local selalu paling cepat: tampil "· kosong"
+    await expect(page.locator('.src-group[data-src="local"] .src-count')).toHaveText("· kosong", {timeout: 10_000});
+  });
+
+  test("search menampilkan grup per situs (spinner → hasil)", async ({page}) => {
+    await page.goto("presenter.php");
+    await page.getByTestId("songSearch").fill("kasih");
+    await page.getByTestId("btnSearch").click();
+
+    // grup sumber tampil semua (4 grup)
+    await expect(page.locator(".src-group")).toHaveCount(4);
+    // local berisi hasil
+    await expect(page.locator('.src-group[data-src="local"] .src-count')).not.toBeEmpty({timeout: 10_000});
+    // jrchord mengisi hasil (atau kosong/gagal) — spinner hilang
+    await expect(page.locator('.src-group[data-src="jrchord"] .src-spinner')).toHaveCount(0, {timeout: 30_000});
   });
 
   test("klik hasil search → lagu tampil (counter & slide 1)", async ({page}) => {
