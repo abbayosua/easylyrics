@@ -98,6 +98,7 @@ $books = [
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         .src-err { padding: 8px 14px; color: #664444; font-size: 12px; }
+        .verse-count { padding: 2px 4px; font-size: 13px; color: #a78bfa; font-weight: 600; }
 
         .stage { flex: 1; display: flex; flex-direction: column; min-width: 0; }
         .preview {
@@ -187,10 +188,10 @@ $books = [
                     <option value="<?= htmlspecialchars($b[0]) ?>"><?= htmlspecialchars($b[1]) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <select id="chapSel" data-testid="chapSel"><option value="">Pasal</option></select>
+                <select id="chapSel" data-testid="chapSel"><option value="">--</option></select>
             </div>
             <div class="lib-search">
-                <button class="btn btn-primary" style="width:100%" data-testid="btnLoadChapter" onclick="loadChapter()">Tampilkan Pasal</button>
+                <span class="verse-count" id="verseCount" data-testid="verseCount"></span>
             </div>
             <div class="lib-empty">Pilih kitab & pasal. Ayat ter-cache otomatis di MySQL.</div>
         </div>
@@ -359,21 +360,25 @@ $('bookSel').addEventListener('change', () => {
     const b = BOOKS.find(x => x[0] === $('bookSel').value);
     const sel = $('chapSel');
     sel.innerHTML = '';
+    $('verseCount').textContent = '';
     if (!b) return;
     for (let i = 1; i <= b[2]; i++) {
         const o = document.createElement('option');
-        o.value = i; o.textContent = 'Pasal ' + i;
+        o.value = i; o.textContent = String(i);   // nomor aja
         sel.appendChild(o);
     }
 });
 
-async function loadChapter() {
+// pilih pasal → langsung fetch + present
+$('chapSel').addEventListener('change', async () => {
     const book = $('bookSel').value, chap = $('chapSel').value;
     if (!book || !chap) return;
+    $('verseCount').textContent = 'Memuat...';
     const r = await api('get_chapter', { book, chapter: chap });
-    if (r.error) { alert(r.error); return; }
+    if (r.error) { $('verseCount').textContent = ''; alert(r.error); return; }
+    $('verseCount').textContent = r.slides.length + ' ayat';
     present(r.ref, r.ref, r.slides);
-}
+});
 
 // ---------------- manual add ----------------
 function openModal() { $('addModal').style.display = 'flex'; $('mTitle').focus(); }

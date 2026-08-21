@@ -386,15 +386,17 @@ class JrChordScraper
 
 /**
  * LirikLaguKristenScraper — third source: https://liriklagukristen.id/
- * (WordPress, no bot protection; lyrics inside <div class="lyrics">).
+ * Situs menyediakan /search-index.json (slug + judul + lirik penuh, ±4800 lagu)
+ * — pencarian dilakukan lokal di index ini, tanpa scraping halaman search.
  */
 class LirikLaguKristenScraper
 {
     private string $baseUrl = 'https://liriklagukristen.id';
+    private static ?array $index = null;
 
     private function fetch(string $url): string
     {
-        // resolve relative path (hasil search berupa /slug/)
+        // resolve relative path
         if (str_starts_with($url, '/')) {
             $url = $this->baseUrl . $url;
         }
@@ -405,7 +407,7 @@ class LirikLaguKristenScraper
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_USERAGENT => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-            CURLOPT_TIMEOUT => 20,
+            CURLOPT_TIMEOUT => 30,
         ]);
         $html = curl_exec($ch);
         $errno = curl_errno($ch);
@@ -416,41 +418,55 @@ class LirikLaguKristenScraper
         return $html;
     }
 
-    private function dom(string $html): DOMXPath
+    /** Index lagu (di-cache per proses PHP — fetch sekali saja). */
+    public function getIndex(): array
     {
-        $dom = new DOMDocument();
-        @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $html);
-        return new DOMXPath($dom);
+        if (self::$index === null) {
+            $data = json_decode($this->fetch('/search-index.json'), true);
+            self::$index = is_array($data) ? $data : [];
+        }
+        return self::$index;
     }
 
-    /** @return array{id:string, slug:string, title:string, url:string} */
+    /**
+     * Cari di index lokal (judul ATAU lirik mengandung kata kunci).
+     *
+     * @return array<int, array{slug:string,title:string,url:string,excerpt:string,lyric_full:string}>
+     */
     public function search(string $keyword): array
     {
-        $xpath = $this->dom($this->fetch($this->baseUrl . '/?s=' . urlencode($keyword)));
+        $q = mb_strtolower(trim($keyword));
+        if ($q === '') {
+            return [];
+        }
         $out = [];
-        $seen = [];
-        // hasil pencarian: <a class="card" href="/slug/"><h2 class="card__title">Judul</h2>...</a>
-        foreach ($xpath->query("//a[contains(@class, 'card')]") as $a) {
-            $href = trim($a->getAttribute('href'));
-            if (!preg_match('#^/([a-z0-9-]+)/?$#', $href, $m)) {
+        foreach ($this->getIndex() as $e) {
+            $title = trim((string) ($e['t'] ?? ''));
+            $lyric = (string) ($e['l'] ?? '');
+            $slug  = (string) ($e['s'] ?? '');
+            if ($title === '' || $slug === '') {
                 continue;
             }
-            $slug = $m[1];
-            if ($slug === '' || isset($seen[$slug])) {
+            if (!str_contains(mb_strtolower($title), $q)
+                && !str_contains(mb_strtolower($lyric), $q)) {
                 continue;
             }
-            $seen[$slug] = true;
-            $title = '';
-            $titles = $xpath->query(".//h2[contains(@class, 'card__title')]", $a);
-            if ($titles->length > 0) {
-                $title = trim($titles->item(0)->textContent);
-            }
+            // excerpt: baris lirik pertama yang tidak kosong
             $excerpt = '';
-            $excerpts = $xpath->query(".//p[contains(@class, 'card__excerpt')]", $a);
-            if ($excerpts->length > 0) {
-                $excerpt = trim($excerpts->item(0)->textContent);
+            foreach (preg_split("/\R/", $lyric) as $ln) {
+                $ln = trim($ln, " 	`“”‘’");
+                if ($ln !== '') {
+                    $excerpt = $ln;
+                    break;
+                }
             }
-            $out[] = ['slug' => $slug, 'title' => $title ?: $slug, 'url' => $href, 'excerpt' => $excerpt];
+            $out[] = [
+                'slug'       => $slug,
+                'title'      => $title,
+                'url'        => $this->baseUrl . '/' . $slug . '/',
+                'excerpt'    => mb_substr($excerpt, 0, 120),
+                'lyric_full' => $lyric,
+            ];
             if (count($out) >= 10) {
                 break;
             }
@@ -458,7 +474,7 @@ class LirikLaguKristenScraper
         return $out;
     }
 
-    /** @return array{title:string, lyric:string, chord:string} */
+    /** Detail lengkap dari halaman HTML (untuk entry yang terpotong di index). */
     public function detail(string $url): array
     {
         $xpath = $this->dom($this->fetch($url));
@@ -477,14 +493,9 @@ class LirikLaguKristenScraper
             foreach ($lyrics->item(0)->childNodes as $child) {
                 $html .= $child->ownerDocument->saveHTML($child);
             }
-            $html = preg_replace('/<br\s*\/?>/i', "
-", $html);
+            $html = preg_replace('/<br\s*\/?>/i', "\n", $html);
             $text = trim(strip_tags($html));
-            // collapse multiple blank lines to one
-            $text = preg_replace('/[
-]{3,}/', "
-
-", $text);
+            $text = preg_replace('/[\r\n]{3,}/', "\n\n", $text);
             $lyric = $text;
         }
         return [
@@ -492,6 +503,13 @@ class LirikLaguKristenScraper
             'lyric' => $lyric,
             'chord' => '',
         ];
+    }
+
+    private function dom(string $html): DOMXPath
+    {
+        $dom = new DOMDocument();
+        @$dom->loadHTML('<?xml encoding="utf-8" ?>' . $html);
+        return new DOMXPath($dom);
     }
 }
 

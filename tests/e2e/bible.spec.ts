@@ -21,8 +21,7 @@ test.describe("Alkitab", () => {
 
     // ---- 3. pilih Yohanes pasal 3 ----
     await page.getByTestId("bookSel").selectOption("Yoh");
-    await page.getByTestId("chapSel").selectOption("3");
-    await page.getByTestId("btnLoadChapter").click();
+    await page.getByTestId("chapSel").selectOption("3");   // langsung fetch
 
     // ---- 4. pasal termuat: 36 ayat, slide 1 = Yoh 3:1 ----
     await expect(page.getByTestId("counter")).toHaveText("1 / 36", {timeout: 30_000});
@@ -69,8 +68,7 @@ test.describe("Alkitab", () => {
     await page.goto("presenter.php");
     await page.getByTestId("tabBible").click();
     await page.getByTestId("bookSel").selectOption("Yoh");
-    await page.getByTestId("chapSel").selectOption("3");
-    await page.getByTestId("btnLoadChapter").click();
+    await page.getByTestId("chapSel").selectOption("3");   // langsung fetch
 
     await expect(page.getByTestId("counter")).toHaveText("1 / 36", {timeout: 30_000});
     await expect(page.getByTestId("previewLines")).toContainText("Adalah seorang Farisi");
@@ -82,8 +80,7 @@ test.describe("Alkitab fit-text", () => {
     await page.goto("presenter.php");
     await page.getByTestId("tabBible").click();
     await page.getByTestId("bookSel").selectOption("Yoh");
-    await page.getByTestId("chapSel").selectOption("3");
-    await page.getByTestId("btnLoadChapter").click();
+    await page.getByTestId("chapSel").selectOption("3");   // langsung fetch
     await expect(page.getByTestId("counter")).toHaveText("1 / 36", {timeout: 30_000});
 
     const pro = await context.newPage();
@@ -123,8 +120,7 @@ test.describe("Alkitab fit-text viewport kecil", () => {
     await page.goto("presenter.php");
     await page.getByTestId("tabBible").click();
     await page.getByTestId("bookSel").selectOption("Yoh");
-    await page.getByTestId("chapSel").selectOption("3");
-    await page.getByTestId("btnLoadChapter").click();
+    await page.getByTestId("chapSel").selectOption("3");   // langsung fetch
     await expect(page.getByTestId("counter")).toHaveText("1 / 36", {timeout: 30_000});
 
     const pro = await context.newPage();

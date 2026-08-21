@@ -231,12 +231,16 @@ function searchLirikLaguKristen(string $q): array
         foreach ($remote as $r) {
             $slug = preg_replace('/[^a-z0-9-]/', '', strtolower((string) $r['slug']));
             $excerpt = mb_substr((string) ($r['excerpt'] ?? ''), 0, 120);
+            // index menyimpan lirik penuh — langsung simpan, lazy fetch tidak perlu
+            $full = (string) ($r['lyric_full'] ?? '');
             $existing = DB::getSongBySlug($slug);
-            if ($existing && !empty($excerpt) && $existing['lyric'] === '') {
-                DB::updateSongContent($existing['id'], $excerpt, '');
+            if ($existing) {
+                if (!empty($full) && strlen($full) > strlen($existing['lyric'])) {
+                    DB::updateSongContent($existing['id'], $full, '');
+                }
             }
             $cached = $existing ? ['id' => $existing['id'], 'slug' => $existing['slug'], 'title' => $existing['title']]
-                : DB::insertSong($r['title'], $excerpt, '', 'liriklagukristen', $slug ?: 'lagu-' . substr(md5($r['url']), 0, 6), $r['url']);
+                : DB::insertSong($r['title'], $full ?: $excerpt, '', 'liriklagukristen', $slug ?: 'lagu-' . substr(md5($r['url']), 0, 6), $r['url']);
             $out[] = [
                 'id' => $cached['id'],
                 'title' => $r['title'],
