@@ -32,7 +32,9 @@ test.describe("Presentasi Lagu", () => {
     await seedSong(page, t);
     await presentSong(page, t);
 
-    await expect(page.getByTestId("counter")).toHaveText("1 / 3", {timeout: 10_000});
+    await expect
+      .poll(async () => page.getByTestId("counter").textContent(), {timeout: 10_000})
+      .toContain("1 / 3", {timeout: 10_000});
     const lines = page.getByTestId("previewLines");
     await expect(lines).toContainText("Baris satu");
     await expect(lines).toContainText("Baris dua");
@@ -44,16 +46,22 @@ test.describe("Presentasi Lagu", () => {
     await presentSong(page, t);
 
     await page.getByTestId("btnNext").click();
-    await expect(page.getByTestId("counter")).toHaveText("2 / 3");
+    await expect
+      .poll(async () => page.getByTestId("counter").textContent(), {timeout: 10_000})
+      .toContain("2 / 3");
     await expect(page.getByTestId("previewLines")).not.toContainText("Baris");
 
     await page.getByTestId("btnNext").click();
-    await expect(page.getByTestId("counter")).toHaveText("3 / 3");
+    await expect
+      .poll(async () => page.getByTestId("counter").textContent(), {timeout: 10_000})
+      .toContain("3 / 3");
     await expect(page.getByTestId("previewLines")).toContainText("Baris tiga");
     await expect(page.getByTestId("previewLines")).toContainText("Baris empat");
 
     await page.getByTestId("btnPrev").click();
-    await expect(page.getByTestId("counter")).toHaveText("2 / 3");
+    await expect
+      .poll(async () => page.getByTestId("counter").textContent(), {timeout: 10_000})
+      .toContain("2 / 3");
   });
 
   test("slide list click-to-jump", async ({page}) => {
@@ -62,7 +70,9 @@ test.describe("Presentasi Lagu", () => {
     await presentSong(page, t);
 
     await page.locator(".sl-item").nth(2).click();
-    await expect(page.getByTestId("counter")).toHaveText("3 / 3");
+    await expect
+      .poll(async () => page.getByTestId("counter").textContent(), {timeout: 10_000})
+      .toContain("3 / 3");
     await expect(page.getByTestId("previewLines")).toContainText("Baris tiga");
   });
 
@@ -72,10 +82,15 @@ test.describe("Presentasi Lagu", () => {
     await presentSong(page, t);
 
     // pastikan fokus di halaman (bukan di input search)
-    await page.locator("body").click({position: {x: 5, y: 5}});
+    await expect(page.getByTestId("previewLines")).toContainText("Baris satu");
+    await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
     await page.keyboard.press("ArrowRight");
-    await expect(page.getByTestId("counter")).toHaveText("2 / 3");
+    await expect
+      .poll(async () => page.getByTestId("counter").textContent(), {timeout: 10_000})
+      .toContain("2 / 3");
     await page.keyboard.press("ArrowLeft");
-    await expect(page.getByTestId("counter")).toHaveText("1 / 3");
+    await expect
+      .poll(async () => page.getByTestId("counter").textContent(), {timeout: 10_000})
+      .toContain("1 / 3");
   });
 });

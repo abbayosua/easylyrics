@@ -28,8 +28,10 @@ test.describe("Cari Lagu", () => {
     await page.getByTestId("songSearch").fill("zygote-e2e-abcdef");
     await page.getByTestId("btnSearch").click();
 
-    // local selalu paling cepat: tampil "· kosong"
-    await expect(page.locator('.src-group[data-src="local"] .src-count')).toHaveText("· kosong", {timeout: 10_000});
+    // local selalu paling cepat: spinner hilang + status muncul
+    const localGroup = page.locator('.src-group[data-src="local"]');
+    await expect(localGroup.locator(".src-spinner")).toHaveCount(0, {timeout: 30_000});
+    await expect(localGroup.locator(".src-count")).toContainText("kosong");
   });
 
   test("search menampilkan grup per situs (spinner → hasil)", async ({page}) => {

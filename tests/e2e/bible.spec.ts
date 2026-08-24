@@ -20,8 +20,9 @@ test.describe("Alkitab", () => {
     await page.getByTestId("tabBible").click();
 
     // ---- 3. pilih Yohanes pasal 3 ----
-    await page.getByTestId("bookSel").selectOption("Yoh");
-    await page.getByTestId("chapSel").selectOption("3");   // langsung fetch
+    await page.getByTestId("bookInput").fill("Yohanes");
+    await page.getByTestId("chapInput").fill("3");
+    await page.getByTestId("chapInput").press("Enter");
 
     // ---- 4. pasal termuat: 36 ayat, slide 1 = Yoh 3:1 ----
     await expect(page.getByTestId("counter")).toHaveText("1 / 36", {timeout: 30_000});
@@ -67,8 +68,10 @@ test.describe("Alkitab", () => {
   test("pasal yang sama ter-cache (tanpa jaringan, hasil tetap sama)", async ({page}) => {
     await page.goto("presenter.php");
     await page.getByTestId("tabBible").click();
-    await page.getByTestId("bookSel").selectOption("Yoh");
-    await page.getByTestId("chapSel").selectOption("3");   // langsung fetch
+    // ketik kitab → pasal (auto-fetch saat change)
+    await page.getByTestId("bookInput").fill("Yohanes");
+    await page.getByTestId("chapInput").fill("3");
+    await page.getByTestId("chapInput").press("Enter");
 
     await expect(page.getByTestId("counter")).toHaveText("1 / 36", {timeout: 30_000});
     await expect(page.getByTestId("previewLines")).toContainText("Adalah seorang Farisi");
@@ -79,8 +82,10 @@ test.describe("Alkitab fit-text", () => {
   test("ayat terpanjang tidak overflow (font mengecil otomatis)", async ({page, context}) => {
     await page.goto("presenter.php");
     await page.getByTestId("tabBible").click();
-    await page.getByTestId("bookSel").selectOption("Yoh");
-    await page.getByTestId("chapSel").selectOption("3");   // langsung fetch
+    // ketik kitab → pasal (auto-fetch saat change)
+    await page.getByTestId("bookInput").fill("Yohanes");
+    await page.getByTestId("chapInput").fill("3");
+    await page.getByTestId("chapInput").press("Enter");
     await expect(page.getByTestId("counter")).toHaveText("1 / 36", {timeout: 30_000});
 
     const pro = await context.newPage();
@@ -119,8 +124,10 @@ test.describe("Alkitab fit-text viewport kecil", () => {
   test("ayat terpanjang tetap muat di window kecil", async ({page, context}) => {
     await page.goto("presenter.php");
     await page.getByTestId("tabBible").click();
-    await page.getByTestId("bookSel").selectOption("Yoh");
-    await page.getByTestId("chapSel").selectOption("3");   // langsung fetch
+    // ketik kitab → pasal (auto-fetch saat change)
+    await page.getByTestId("bookInput").fill("Yohanes");
+    await page.getByTestId("chapInput").fill("3");
+    await page.getByTestId("chapInput").press("Enter");
     await expect(page.getByTestId("counter")).toHaveText("1 / 36", {timeout: 30_000});
 
     const pro = await context.newPage();

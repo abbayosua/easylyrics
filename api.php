@@ -175,7 +175,8 @@ switch ($action) {
             (string) ($body['type'] ?? 'idle'),
             (string) ($body['title'] ?? ''),
             (string) ($body['ref'] ?? ''),
-            is_array($body['slides'] ?? null) ? $body['slides'] : []
+            is_array($body['slides'] ?? null) ? $body['slides'] : [],
+            (int) ($body['slide'] ?? 0)
         );
         respond(['ok' => true]);
 

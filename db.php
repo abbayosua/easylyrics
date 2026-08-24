@@ -197,14 +197,18 @@ ON DUPLICATE KEY UPDATE id = id;
         return $row;
     }
 
-    /** Sets a brand-new presentation (slide resets to 0). */
-    public static function setState(string $type, string $title, string $ref, array $slides): void
+    /**
+     * Sets a presentation. $slide ditentukan pemanggil: muat eksplisit selalu
+     * mulai dari slide yang diminta (biasanya 0), jadi posisi lama tidak
+     * menggantung di database.
+     */
+    public static function setState(string $type, string $title, string $ref, array $slides, int $slide = 0): void
     {
         $st = self::conn()->prepare(
-            'INSERT INTO state (id, type, title, ref, slide, slides) VALUES (1, ?, ?, ?, 0, ?)
+            'INSERT INTO state (id, type, title, ref, slide, slides) VALUES (1, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE type = VALUES(type), title = VALUES(title), ref = VALUES(ref), slide = VALUES(slide), slides = VALUES(slides)'
         );
-        $st->execute([$type, $title, $ref, json_encode($slides, JSON_UNESCAPED_UNICODE)]);
+        $st->execute([$type, $title, $ref, max(0, $slide), json_encode($slides, JSON_UNESCAPED_UNICODE)]);
     }
 
     /** Navigates the current presentation (clamped to valid range). */

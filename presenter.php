@@ -183,14 +183,16 @@ $books = [
 
         <div class="lib-panel" id="panelBible" style="display:none">
             <div class="lib-search">
-                <select id="bookSel" data-testid="bookSel"><option value="">-- Kitab --</option>
+                <input id="bookInput" data-testid="bookInput" list="bookList" placeholder="Kitab..." autocomplete="off"/>
+                <datalist id="bookList">
                     <?php foreach ($books as $b): ?>
-                    <option value="<?= htmlspecialchars($b[0]) ?>"><?= htmlspecialchars($b[1]) ?></option>
+                    <option value="<?= htmlspecialchars($b[1]) ?>" label="<?= htmlspecialchars($b[0]) ?>"></option>
                     <?php endforeach; ?>
-                </select>
-                <select id="chapSel" data-testid="chapSel"><option value="">--</option></select>
+                </datalist>
+                <input id="chapInput" data-testid="chapInput" type="number" min="1" placeholder="Pasal" autocomplete="off" disabled/>
             </div>
             <div class="lib-search">
+                <input id="verseInput" data-testid="verseInput" type="number" min="1" placeholder="Ayat" autocomplete="off" disabled/>
                 <span class="verse-count" id="verseCount" data-testid="verseCount"></span>
             </div>
             <div class="lib-empty">Pilih kitab & pasal. Ayat ter-cache otomatis di MySQL.</div>
@@ -253,23 +255,35 @@ async function api(action, params = {}, method = 'GET') {
 }
 
 // ---------------- presentation state ----------------
+// SEMUA penulisan state lewat antrian ini supaya URUT (state_set tidak
+// bisa nyusul state_nav dan me-reset posisi slide)
+let stateQ = Promise.resolve();
+function queueState(action, body) {
+    stateQ = stateQ.then(() => api(action, body, 'POST')).catch(() => {});
+    return stateQ;
+}
 function setSlide(n, send) {
     if (total === 0) return;
     n = Math.max(0, Math.min(n, total - 1));
     current = n;
     render();
-    if (send) api('state_nav', { slide: n }, 'POST');
+    if (send) {
+        lastWriteAt = Date.now();
+        queueState('state_nav', { slide: n });
+    }
 }
 
 function nav(d) { setSlide(current + d, true); }
 function goTo(n) { setSlide(n, true); }
 
-function present(title, ref, newSlides) {
+async function present(title, ref, newSlides) {
     slides = newSlides;
     total = slides.length;
     current = 0;
     $('previewTitle').textContent = title;
-    api('state_set', { type: 'song', title, ref, slides }, 'POST');
+    try {
+        await queueState('state_set', { type: 'song', title, ref, slides, slide: 0 });
+    } catch (e) {}
     render();
 }
 
@@ -354,30 +368,63 @@ async function doSearch() {
     }));
 }
 
-// ---------------- bible ----------------
+// ---------------- bible (keyboard-first: ketik kitab → pasal → ayat) ----------------
 const BOOKS = <?= json_encode($books, JSON_UNESCAPED_UNICODE) ?>;
-$('bookSel').addEventListener('change', () => {
-    const b = BOOKS.find(x => x[0] === $('bookSel').value);
-    const sel = $('chapSel');
-    sel.innerHTML = '';
-    $('verseCount').textContent = '';
-    if (!b) return;
-    for (let i = 1; i <= b[2]; i++) {
-        const o = document.createElement('option');
-        o.value = i; o.textContent = String(i);   // nomor aja
-        sel.appendChild(o);
+let curBook = null;
+
+function resolveBook(text) {
+    const t = text.trim().toLowerCase();
+    if (!t) return null;
+    // cocokkan nama lengkap dulu, lalu singkatan, lalu prefix
+    return BOOKS.find(b => b[1].toLowerCase() === t)
+        || BOOKS.find(b => b[0].toLowerCase() === t)
+        || BOOKS.find(b => b[1].toLowerCase().startsWith(t))
+        || BOOKS.find(b => b[0].toLowerCase().startsWith(t));
+}
+
+// 'input': resolve live saat mengetik (juga fire dari fill() Playwright)
+function resolveAndEnable() {
+    curBook = resolveBook($('bookInput').value);
+    if (curBook) {
+        $('chapInput').disabled = false;
+        $('chapInput').max = curBook[2];
+    } else {
+        $('chapInput').disabled = true;
+        $('verseInput').disabled = true;
     }
+}
+$('bookInput').addEventListener('input', resolveAndEnable);
+
+// 'change' (blur / pilih dari datalist): rapikan ke nama lengkap
+$('bookInput').addEventListener('change', () => {
+    resolveAndEnable();
+    if (curBook) $('bookInput').value = curBook[1];
 });
 
-// pilih pasal → langsung fetch + present
-$('chapSel').addEventListener('change', async () => {
-    const book = $('bookSel').value, chap = $('chapSel').value;
-    if (!book || !chap) return;
+let lastLoaded = '';   // cegah reload ganda (event change bisa terpicu oleh blur)
+async function loadChapter() {
+    const c = parseInt($('chapInput').value);
+    if (!curBook || !c || c < 1 || c > curBook[2]) return;
+    const key = curBook[0] + '|' + c;
+    if (key === lastLoaded && total > 0) return;
+    lastLoaded = key;
     $('verseCount').textContent = 'Memuat...';
-    const r = await api('get_chapter', { book, chapter: chap });
+    const r = await api('get_chapter', { book: curBook[0], chapter: c });
     if (r.error) { $('verseCount').textContent = ''; alert(r.error); return; }
     $('verseCount').textContent = r.slides.length + ' ayat';
+    $('verseInput').disabled = false;
+    $('verseInput').max = r.slides.length;
     present(r.ref, r.ref, r.slides);
+}
+
+$('chapInput').addEventListener('change', loadChapter);
+
+$('verseInput').addEventListener('change', () => {
+    const v = parseInt($('verseInput').value);
+    if (!v) return;
+    const idx = slides.findIndex(s => s.number === v);
+    if (idx >= 0) setSlide(idx, true);
+    else $('verseInput').value = '';
 });
 
 // ---------------- manual add ----------------
@@ -416,6 +463,22 @@ function openProjector() {
 }
 
 document.addEventListener('keydown', e => {
+    if (e.target === $('bookInput') && e.key === 'Enter') {
+        e.preventDefault();
+        $('bookInput').dispatchEvent(new Event('change'));
+        return;
+    }
+    if (e.target === $('chapInput') && e.key === 'Enter') {
+        e.preventDefault();
+        loadChapter();
+        $('verseInput').focus();
+        return;
+    }
+    if (e.target === $('verseInput') && e.key === 'Enter') {
+        e.preventDefault();
+        $('verseInput').dispatchEvent(new Event('change'));
+        return;
+    }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); nav(-1); }
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); nav(1); }
     if (e.key === 'Escape') closeModal();
