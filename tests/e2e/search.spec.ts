@@ -65,5 +65,27 @@ test.describe("Cari Lagu", () => {
     await expect(page.getByTestId("counter")).toHaveText(/1 \//, {timeout: 10_000});
     await expect(page.getByTestId("previewLines")).toContainText("Baris pertama e2e");
     await expect(page.getByTestId("previewLines")).toContainText("Baris kedua e2e");
+    // lagu local tersimpan → tombol Edit header aktif
+    await expect(page.getByTestId("btnEditSong")).toBeEnabled();
+  });
+
+  test("hasil remote unsaved: preview tanpa tombol edit, +Simpan menyimpan", async ({page}) => {
+    await page.goto("presenter.php");
+    await page.getByTestId("songSearch").fill("hadirat");
+    await page.getByTestId("btnSearch").click();
+
+    const group = page.locator('.src-group[data-src="liriklagukristen"]');
+    await expect(group.locator(".src-spinner")).toHaveCount(0, {timeout: 30_000});
+    const unsaved = group.locator(".lib-item", {has: page.locator(".lib-save")}).first();
+    await expect(unsaved).toBeVisible({timeout: 15_000});
+
+    // klik → preview sementara, tombol Edit tetap mati
+    await unsaved.click();
+    await expect(page.getByTestId("previewLines")).not.toBeEmpty({timeout: 15_000});
+    await expect(page.getByTestId("btnEditSong")).toBeDisabled();
+
+    // +Simpan → masuk DB, tombol Edit hidup
+    await unsaved.locator(".lib-save").click();
+    await expect(page.getByTestId("btnEditSong")).toBeEnabled({timeout: 15_000});
   });
 });

@@ -61,8 +61,9 @@ test.describe("Alkitab", () => {
       .poll(async () => page.getByTestId("counter").textContent())
       .toContain("4 / 36", {timeout: 15_000});
 
-    // ---- 9. counter proyektor konsisten ----
-    await expect(proyektor.locator("#counter")).toHaveText("4 / 36", {timeout: 10_000});
+    // ---- 9. proyektor hanya menampilkan teks ayat (tanpa judul/nomor/counter) ----
+    await expect(proyektor.locator("#counter")).toHaveCount(0);
+    await expect(proyektor.locator("#slideTitle")).toHaveCount(0);
   });
 
   test("pasal yang sama ter-cache (tanpa jaringan, hasil tetap sama)", async ({page}) => {
@@ -104,10 +105,11 @@ test.describe("Alkitab fit-text", () => {
     });
 
     // navigasi ke slide terpanjang via state_nav (seperti klik proyektor)
+    const expected = (state.slides[longest].lines || []).join("\n");
     await page.request.post("api.php?action=state_nav", {data: {slide: longest}});
     await expect
-      .poll(async () => pro.locator("#counter").textContent())
-      .toContain(`${longest + 1} / 36`, {timeout: 15_000});
+      .poll(async () => pro.locator("#slideText").textContent())
+      .toBe(expected, {timeout: 15_000});
 
     // teks tidak boleh melebihi area slide (font harus mengecil)
     const overflow = await pro.evaluate(() => {
@@ -145,10 +147,11 @@ test.describe("Alkitab fit-text viewport kecil", () => {
       if (len > maxLen) { maxLen = len; longest = i; }
     });
 
+    const expected = (state.slides[longest].lines || []).join("\n");
     await page.request.post("api.php?action=state_nav", {data: {slide: longest}});
     await expect
-      .poll(async () => pro.locator("#counter").textContent())
-      .toContain(`${longest + 1} / 36`, {timeout: 15_000});
+      .poll(async () => pro.locator("#slideText").textContent())
+      .toBe(expected, {timeout: 15_000});
 
     const overflow = await pro.evaluate(() => {
       const slide = document.getElementById("slide") as HTMLElement;

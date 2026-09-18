@@ -38,7 +38,7 @@ test.describe("Proyektor", () => {
     await expect
       .poll(async () => pro.locator("#slideText").textContent())
       .toContain("· · ·", {timeout: 15_000});
-    await expect(pro.locator("#counter")).toHaveText("2 / 3", {timeout: 10_000});
+    await expect(pro.locator("#counter")).toHaveCount(0);
   });
 
   test("proyektor navigasi → presenter ikut", async ({page, context}) => {

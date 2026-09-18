@@ -52,6 +52,7 @@ $books = [
         .btn-dark:hover { background: #333; color: #fff; }
         .btn-add { background: #22c55e; color: #052e16; }
         .btn-add:hover { background: #4ade80; }
+        .btn:disabled { opacity: .35; cursor: not-allowed; }
 
         .main { flex: 1; display: flex; min-height: 0; }
         .library {
@@ -76,6 +77,11 @@ $books = [
         .lib-item:hover { background: #1a1a1a; }
         .lib-item.active { background: #1e1b4b; border-left: 3px solid #a78bfa; }
         .lib-item-title { font-size: 14px; font-weight: 500; color: #ccc; }
+        .lib-edit { float: right; opacity: .35; cursor: pointer; padding: 0 4px; }
+        .lib-edit:hover { opacity: 1; color: #a78bfa; }
+        .lib-save { float: right; opacity: .6; cursor: pointer; padding: 0 4px; font-size: 12px; color: #22c55e; }
+        .lib-save:hover { opacity: 1; }
+        .lib-saved-tag { float: right; font-size: 10px; color: #22c55e; padding: 0 4px; }
         .lib-item-sub {
             font-size: 11px; color: #555; margin-top: 2px;
             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
@@ -147,7 +153,7 @@ $books = [
             background: #1a1a2e; border: 1px solid #333; border-radius: 10px; padding: 20px;
         }
         .modal h3 { color: #a78bfa; margin-bottom: 14px; }
-        .modal input, .modal textarea {
+        .modal input, .modal textarea, .modal select {
             width: 100%; padding: 9px 12px; background: #222; color: #eee;
             border: 1px solid #444; border-radius: 6px; font-size: 14px;
             margin-bottom: 10px; font-family: inherit; resize: vertical;
@@ -162,6 +168,7 @@ $books = [
     <div class="header-right">
         <span class="status-dot" id="statusDot" title="Proyektor terkoneksi?"></span>
         <button class="btn btn-dark" onclick="openProjector()">&#9654; Proyektor</button>
+        <button class="btn btn-dark" id="btnEditSong" data-testid="btnEditSong" onclick="openEditSong()" disabled title="Edit lagu yang sedang ditampilkan">&#9998; Edit</button>
         <button class="btn btn-add" onclick="openModal()">+ Tambah Lagu</button>
     </div>
 </div>
@@ -219,16 +226,23 @@ $books = [
 
 <div class="modal-overlay" id="addModal" onclick="if(event.target===this)closeModal()">
     <div class="modal">
-        <h3>Tambah Lagu Manual</h3>
+        <h3 id="modalTitle">Tambah Lagu Manual</h3>
         <label>Judul</label>
         <input id="mTitle" placeholder="Judul lagu"/>
         <label>Lirik (baris kosong = jeda antar bagian)</label>
         <textarea id="mLyric" style="min-height:150px" placeholder="Copy-paste lirik di sini..."></textarea>
         <label>Chord (opsional)</label>
         <textarea id="mChord" style="min-height:60px" placeholder="Chord..."></textarea>
+        <label>Baris per slide</label>
+        <select id="mPerSlide">
+            <option value="1">1 baris</option>
+            <option value="2" selected>2 baris (default)</option>
+            <option value="3">3 baris</option>
+            <option value="4">4 baris</option>
+        </select>
         <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:6px">
             <button class="btn btn-dark" onclick="closeModal()">Batal</button>
-            <button class="btn btn-primary" onclick="saveSong()">Simpan & Tampilkan</button>
+            <button class="btn btn-primary" id="mSaveBtn" onclick="saveSong()">Simpan & Tampilkan</button>
         </div>
     </div>
 </div>
@@ -239,6 +253,8 @@ const $ = id => document.getElementById(id);
 let slides = [];
 let total = 0;
 let current = 0;
+let currentSongId = null; // id lagu yang sedang ditampilkan (null = alkitab/idle)
+let editingId = null;     // id lagu yang diedit di modal (null = mode tambah)
 
 // ---------------- helpers ----------------
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -276,13 +292,15 @@ function setSlide(n, send) {
 function nav(d) { setSlide(current + d, true); }
 function goTo(n) { setSlide(n, true); }
 
-async function present(title, ref, newSlides) {
+async function present(title, ref, newSlides, songId = null) {
     slides = newSlides;
     total = slides.length;
     current = 0;
+    currentSongId = songId;
+    $('btnEditSong').disabled = !songId;
     $('previewTitle').textContent = title;
     try {
-        await queueState('state_set', { type: 'song', title, ref, slides, slide: 0 });
+        await queueState('state_set', { type: 'song', title, ref, slides, slide: 0, song_id: songId });
     } catch (e) {}
     render();
 }
@@ -355,13 +373,41 @@ async function doSearch() {
         items.forEach(item => {
             const el = document.createElement('div');
             el.className = 'lib-item';
-            el.innerHTML = `<div class="lib-item-title">${esc(item.title)}</div>
+            const isLocal = s.key === 'local';
+            const isSaved = isLocal || !!item.id;
+            // aksi: item tersimpan (DB) → edit; item remote belum tersimpan → +Simpan
+            const actionBtn = isSaved
+                ? `<span class="lib-edit" title="Edit lirik">&#9998;</span>`
+                : `<span class="lib-save" title="Simpan ke database">+Simpan</span>`;
+            el.innerHTML = `<div class="lib-item-title">${esc(item.title)}${actionBtn}</div>
                             <div class="lib-item-sub">${esc(item.lyric || '')}</div>`;
+            el.querySelector(isSaved ? '.lib-edit' : '.lib-save').onclick = async e => {
+                e.stopPropagation();
+                if (isSaved) {
+                    openEditSongById(item.id);
+                    return;
+                }
+                // simpan remote ke DB, lalu tampilkan lagu tersimpan + refresh daftar
+                const r = await api('save_remote', { source: s.key, source_ref: item.source_ref, slug: item.slug }, 'POST');
+                if (r.error) { alert(r.error); return; }
+                const song = await api('get_song', { id: r.id });
+                if (song.error) { alert(song.error); return; }
+                present(song.title, song.title, song.slides, r.id);
+                doSearch();
+            };
             el.onclick = async () => {
                 list.querySelectorAll('.lib-item').forEach(x => x.classList.remove('active'));
                 el.classList.add('active');
-                const song = await api('get_song', { id: item.id });
-                present(song.title, song.title, song.slides);
+                if (isSaved) {
+                    const song = await api('get_song', { id: item.id });
+                    if (song.error) { alert(song.error); return; }
+                    present(song.title, song.title, song.slides, item.id);
+                    return;
+                }
+                // preview remote tanpa menyimpan — tombol Edit tetap mati
+                const song = await api('detail_remote', { source: s.key, source_ref: item.source_ref });
+                if (song.error) { alert(song.error); return; }
+                present(song.title, song.title, song.slides, null);
             };
             body.appendChild(el);
         });
@@ -427,20 +473,60 @@ $('verseInput').addEventListener('change', () => {
     else $('verseInput').value = '';
 });
 
-// ---------------- manual add ----------------
-function openModal() { $('addModal').style.display = 'flex'; $('mTitle').focus(); }
+// ---------------- manual add / edit ----------------
+function openModal() {
+    editingId = null;
+    $('modalTitle').textContent = 'Tambah Lagu Manual';
+    $('mSaveBtn').textContent = 'Simpan & Tampilkan';
+    $('mTitle').value = '';
+    $('mLyric').value = '';
+    $('mChord').value = '';
+    $('mPerSlide').value = '2';
+    $('addModal').style.display = 'flex';
+    $('mTitle').focus();
+}
+
+function openEditSong() {
+    if (currentSongId) openEditSongById(currentSongId);
+}
+
+async function openEditSongById(id) {
+    const song = await api('get_song', { id });
+    if (song.error) { alert(song.error); return; }
+    editingId = id;
+    $('modalTitle').textContent = 'Edit Lagu';
+    $('mSaveBtn').textContent = 'Simpan Perubahan';
+    $('mTitle').value = song.title || '';
+    $('mLyric').value = song.lyric || '';
+    $('mChord').value = song.chord || '';
+    $('mPerSlide').value = String(song.lines_per_slide || 2);
+    $('addModal').style.display = 'flex';
+    $('mTitle').focus();
+}
+
 function closeModal() { $('addModal').style.display = 'none'; }
 
 async function saveSong() {
     const title = $('mTitle').value.trim();
     const lyric = $('mLyric').value.trim();
     const chord = $('mChord').value.trim();
+    const perSlide = parseInt($('mPerSlide').value, 10) || 2;
     if (!title || !lyric) { alert('Judul dan lirik wajib diisi.'); return; }
-    const r = await api('add_song', { title, lyric, chord }, 'POST');
+    if (editingId) {
+        const r = await api('update_song', { id: editingId, title, lyric, chord, lines_per_slide: perSlide }, 'POST');
+        if (r.error) { alert(r.error); return; }
+        closeModal();
+        const song = await api('get_song', { id: editingId });
+        present(song.title, song.title, song.slides, editingId);
+        $('q').value = title;
+        doSearch();
+        return;
+    }
+    const r = await api('add_song', { title, lyric, chord, lines_per_slide: perSlide }, 'POST');
     if (r.error) { alert(r.error); return; }
     closeModal();
     const song = await api('get_song', { id: r.id });
-    present(song.title, song.title, song.slides);
+    present(song.title, song.title, song.slides, r.id);
     // isi input dengan judul baru lalu cari supaya lagu muncul di daftar
     $('q').value = title;
     doSearch();
@@ -490,14 +576,23 @@ async function pollState() {
     try {
         const s = await api('state_get');
         if (s.type === 'idle' || !s.slides || s.slides.length === 0) return;
+        let changed = false;
         if (s.updated_at !== stateKey) {
             // konten presentasi baru dari pihak lain (mis. tab presenter kedua)
             stateKey = s.updated_at;
             slides = s.slides;
             total = s.slides.length;
             $('previewTitle').textContent = s.title || '';
+            // pulihkan id lagu live (mis. setelah refresh) → tombol Edit hidup lagi
+            currentSongId = s.song_id ? Number(s.song_id) : null;
+            $('btnEditSong').disabled = !currentSongId;
+            changed = true;
         }
-        if (typeof s.slide === 'number' && s.slide !== current && s.slide >= 0 && s.slide < total) {
+        // tampilkan lagi lagu live setelah refresh/restart (dulu tak render
+        // kalau slide tersimpan kebetulan == posisi awal 0)
+        if (changed) {
+            setSlide(typeof s.slide === 'number' ? s.slide : 0, false);
+        } else if (typeof s.slide === 'number' && s.slide !== current && s.slide >= 0 && s.slide < total) {
             setSlide(s.slide, false);
         }
     } catch (e) { /* server mati: diam */ }

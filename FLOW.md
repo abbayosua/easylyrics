@@ -7,9 +7,14 @@ Setiap flow punya file E2E Playwright terkait di `tests/e2e/` — dijalankan
 ## Flow 1 — Cari Lagu
 1. Buka `presenter.php` (tab **Lagu** default)
 2. Ketik kata kunci → klik **Cari** (atau Enter)
-3. Hasil: **local MySQL dulu** (manual + yang pernah di-cache);
-   kalau kosong → fallback unlimitedworship → fallback JRChord (di-cache otomatis)
-4. Klik hasil → lagu tampil di preview
+3. Hasil: **local MySQL dulu** (manual + yang sudah tersimpan);
+   3 grup remote (unlimitedworship, jrchord, liriklagukristen) **tidak auto-masuk DB** —
+   hanya preview
+4. Klik hasil local → lagu tampil di preview (bisa di-**Edit**).
+   Klik hasil remote → preview sementara (tombol Edit mati).
+   Klik **+Simpan** pada hasil remote → lirik penuh di-fetch, disimpan ke DB,
+   lalu tampil sebagai lagu tersimpan (bisa di-Edit)
+5. Lagu yang sudah tersimpan muncul di grup local pada pencarian berikutnya
 
 E2E: `search.spec.ts`
 
@@ -41,10 +46,10 @@ E2E: `bible.spec.ts`
 ## Flow 5 — Proyektor (OBS)
 1. Tombol **Proyektor** di header → buka `projector.php` (window baru)
 2. `projector.php` **URL-nya FIXED** (tanpa parameter) → aman diumpankan ke
-   OBS Browser Source; konten di-poll dari server tiap 500ms
+   OBS Browser Source; konten di-poll dari server tiap 500ms; hanya teks lirik/ayat
 3. Presenter & proyektor **sinkron dua arah**: navigasi presenter → proyektor ikut;
    navigasi proyektor (klik kiri/kanan, swipe, keyboard) → presenter ikut
-4. Toolbar proyektor muncul saat hover (judul + counter)
+4. Proyektor hanya menampilkan teks (tanpa judul, nomor ayat, dan counter)
 
 E2E: `projector.spec.ts`
 

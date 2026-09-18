@@ -82,6 +82,26 @@ ON DUPLICATE KEY UPDATE id = id;
         } catch (PDOException $e) {
             // column already exists
         }
+        // edited flag — set when the operator hand-edits a song (manual or
+        // scrape-cached) so the lazy remote refresh stops overwriting it
+        try {
+            $pdo->exec("ALTER TABLE songs ADD COLUMN edited TINYINT NOT NULL DEFAULT 0 AFTER source_ref");
+        } catch (PDOException $e) {
+            // column already exists
+        }
+        // song_id on state — supaya tab presenter yang baru di-refresh bisa
+        // memulihkan lagu yang sedang live (dan tombol Edit tetap hidup)
+        try {
+            $pdo->exec("ALTER TABLE state ADD COLUMN song_id INT NULL AFTER ref");
+        } catch (PDOException $e) {
+            // column already exists
+        }
+        // lines_per_slide — jumlah baris per slide (default 2), bisa diubah lewat Edit
+        try {
+            $pdo->exec("ALTER TABLE songs ADD COLUMN lines_per_slide TINYINT NOT NULL DEFAULT 2 AFTER edited");
+        } catch (PDOException $e) {
+            // column already exists
+        }
     }
 
     // ---- songs ----
@@ -118,16 +138,16 @@ ON DUPLICATE KEY UPDATE id = id;
     }
 
     /** Inserts a song; on slug collision appends -2, -3, ... */
-    public static function insertSong(string $title, string $lyric, string $chord, string $source = 'manual', ?string $slug = null, ?string $sourceRef = null): array
+    public static function insertSong(string $title, string $lyric, string $chord, string $source = 'manual', ?string $slug = null, ?string $sourceRef = null, int $perSlide = 2): array
     {
         $base = $slug ?? self::slugify($title);
         $candidate = $base;
         for ($i = 2; ; $i++) {
             try {
                 $st = self::conn()->prepare(
-                    'INSERT INTO songs (title, slug, lyric, chord, metadata, source, source_ref) VALUES (?, ?, ?, ?, ?, ?, ?)'
+                    'INSERT INTO songs (title, slug, lyric, chord, metadata, source, source_ref, lines_per_slide) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
                 );
-                $st->execute([$title, $candidate, $lyric, $chord ?: null, json_encode(['source' => $source]), $source, $sourceRef]);
+                $st->execute([$title, $candidate, $lyric, $chord ?: null, json_encode(['source' => $source]), $source, $sourceRef, max(1, $perSlide)]);
                 return ['id' => (int) self::conn()->lastInsertId(), 'title' => $title, 'slug' => $candidate, 'source' => $source, 'source_ref' => $sourceRef];
             } catch (PDOException $e) {
                 if (str_contains($e->getMessage(), 'Duplicate entry')) {
@@ -146,9 +166,20 @@ ON DUPLICATE KEY UPDATE id = id;
         $st->execute([$lyric, $chord, $id]);
     }
 
+    /** Operator edit: updates title/lyric/chord + slide grouping and marks the
+     *  song as edited so the remote lazy-refresh no longer overwrites it. */
+    public static function updateSong(int $id, string $title, string $lyric, string $chord, int $perSlide = 2): void
+    {
+        $st = self::conn()->prepare('UPDATE songs SET title = ?, lyric = ?, chord = ?, lines_per_slide = ?, edited = 1 WHERE id = ?');
+        $st->execute([$title, $lyric, $chord, max(1, $perSlide), $id]);
+    }
+
     private static function decodeSong(array $row): array
     {
         $row['id'] = (int) $row['id'];
+        if (isset($row['lines_per_slide'])) {
+            $row['lines_per_slide'] = (int) $row['lines_per_slide'];
+        }
         $row['metadata'] = json_decode((string) $row['metadata'], true) ?: [];
         return $row;
     }
@@ -194,6 +225,7 @@ ON DUPLICATE KEY UPDATE id = id;
         }
         $row['slides'] = json_decode((string) $row['slides'], true) ?: [];
         $row['slide'] = (int) $row['slide'];
+        $row['song_id'] = isset($row['song_id']) ? (int) $row['song_id'] : null;
         return $row;
     }
 
@@ -202,13 +234,13 @@ ON DUPLICATE KEY UPDATE id = id;
      * mulai dari slide yang diminta (biasanya 0), jadi posisi lama tidak
      * menggantung di database.
      */
-    public static function setState(string $type, string $title, string $ref, array $slides, int $slide = 0): void
+    public static function setState(string $type, string $title, string $ref, array $slides, int $slide = 0, ?int $songId = null): void
     {
         $st = self::conn()->prepare(
-            'INSERT INTO state (id, type, title, ref, slide, slides) VALUES (1, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE type = VALUES(type), title = VALUES(title), ref = VALUES(ref), slide = VALUES(slide), slides = VALUES(slides)'
+            'INSERT INTO state (id, type, title, ref, slide, slides, song_id) VALUES (1, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE type = VALUES(type), title = VALUES(title), ref = VALUES(ref), slide = VALUES(slide), slides = VALUES(slides), song_id = VALUES(song_id)'
         );
-        $st->execute([$type, $title, $ref, max(0, $slide), json_encode($slides, JSON_UNESCAPED_UNICODE)]);
+        $st->execute([$type, $title, $ref, max(0, $slide), json_encode($slides, JSON_UNESCAPED_UNICODE), $songId]);
     }
 
     /** Navigates the current presentation (clamped to valid range). */

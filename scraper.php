@@ -128,10 +128,13 @@ class UnlimitedWorshipScraper
         ];
     }
 
-    public function splitLyrics(string $text): array
+    public function splitLyrics(string $text, int $perSlide = 2): array
 {
     $text = str_replace("\r\n", "\n", $text);
     $text = str_replace("\r", "\n", $text);
+    if ($perSlide < 1) {
+        $perSlide = 1;
+    }
     $lines = explode("\n", $text);
 
     $slides = [];
@@ -140,6 +143,10 @@ class UnlimitedWorshipScraper
 
     foreach ($lines as $line) {
         $line = trim($line);
+        // section labels ("Reff:", "Chorus", "Verse 2", ...) are not lyric
+        if ($line !== '' && $this->isSectionLabel($line)) {
+            $line = '';
+        }
         if ($line === '') {
             if (!empty($buffer)) {
                 $slides[] = ['type' => 'lyric', 'lines' => $buffer];
@@ -154,7 +161,7 @@ class UnlimitedWorshipScraper
         } else {
             $buffer[] = $line;
             $lastWasPause = false;
-            if (count($buffer) === 2) {
+            if (count($buffer) >= $perSlide) {
                 $slides[] = ['type' => 'lyric', 'lines' => $buffer];
                 $buffer = [];
             }
@@ -170,6 +177,14 @@ class UnlimitedWorshipScraper
     }
 
     return $slides;
+}
+
+private function isSectionLabel(string $line): bool
+{
+    return (bool) preg_match(
+        '/^(intro|bait|reff|refrain|chorus|verse|musik|interlude|ending|overtone|pre[- ]?chorus|jembatan|bridge|coda|instrumental|outro|tag)\s*\d*\s*:?\s*$/i',
+        trim($line)
+    );
 }
 }
 
@@ -279,7 +294,7 @@ class JrChordScraper
                 continue;
             }
             // section labels: Bait :, Reff :, Intro :, ...
-            if (preg_match('/^(intro|bait|reff|refrain|chorus|verse|musik|interlude|ending|overtone|pre[- ]?chorus|jembatan|bridge|coda|instrumental|outro)\s*:?$/i', $t)) {
+            if ($this->isSectionLabel($t)) {
                 continue;
             }
             // chord-only line: every whitespace-separated token is a chord symbol

@@ -12,6 +12,9 @@ require_once __DIR__ . '/scraper.php';
  *   GET  api.php?action=get_song&id=...     song + lyric slides
  *   GET  api.php?action=get_chapter&book=..&chapter=..   verses (cache or beeble) + slides
  *   POST api.php?action=add_song            {title, lyric, chord}
+ *   POST api.php?action=update_song         {id, title, lyric, chord}
+ *   GET  api.php?action=detail_remote&source=..&source_ref=..  preview tanpa simpan
+ *   POST api.php?action=save_remote          {source, source_ref, slug, remote_id?}
  *   GET  api.php?action=state_get           current projection state
  *   POST api.php?action=state_set           {type, title, ref, slides}
  *   POST api.php?action=state_nav           {slide}
@@ -68,6 +71,7 @@ switch ($action) {
                     'slug' => $s['slug'],
                     'lyric' => mb_substr((string) $s['lyric'], 0, 120),
                     'source' => $s['source'],
+                    'saved' => true,
                 ], DB::searchSongs($q, 50));
                 respond(['source' => 'local', 'items' => $items]);
 
@@ -93,7 +97,7 @@ switch ($action) {
         }
         // lazy full-detail fetch for remote-sourced songs (search caches only
         // the snippet; the full lyric+chord is fetched once on demand)
-        if ($song['source'] !== 'manual' && !empty($song['source_ref'])) {
+        if ($song['source'] !== 'manual' && empty($song['edited']) && !empty($song['source_ref'])) {
             try {
                 if ($song['source'] === 'jrchord') {
                     $d = (new JrChordScraper())->detail($song['source_ref']);
@@ -118,7 +122,8 @@ switch ($action) {
             'slug' => $song['slug'],
             'lyric' => $song['lyric'],
             'chord' => $song['chord'],
-            'slides' => $scraper->splitLyrics($song['lyric']),
+            'lines_per_slide' => (int) ($song['lines_per_slide'] ?? 2),
+            'slides' => $scraper->splitLyrics($song['lyric'], (int) ($song['lines_per_slide'] ?? 2)),
         ]);
 
     // --------------------------------------------------------- get_chapter
@@ -158,11 +163,83 @@ switch ($action) {
         $title = trim($body['title'] ?? '');
         $lyric = trim($body['lyric'] ?? '');
         $chord = trim($body['chord'] ?? '');
+        $perSlide = (int) ($body['lines_per_slide'] ?? 2);
         if ($title === '' || $lyric === '') {
             fail('Judul dan lirik wajib diisi.');
         }
-        $saved = DB::insertSong($title, $lyric, $chord, 'manual');
+        $saved = DB::insertSong($title, $lyric, $chord, 'manual', null, null, $perSlide);
         respond(['id' => $saved['id'], 'title' => $saved['title'], 'slug' => $saved['slug']], 201);
+
+    // --------------------------------------------------------- update_song
+    case 'update_song':
+        $body = postJson();
+        $id = (int) ($body['id'] ?? 0);
+        $title = trim($body['title'] ?? '');
+        $lyric = trim($body['lyric'] ?? '');
+        $chord = trim($body['chord'] ?? '');
+        $perSlide = (int) ($body['lines_per_slide'] ?? 2);
+        if ($id < 1 || $title === '' || $lyric === '') {
+            fail('Parameter id, judul dan lirik wajib diisi.');
+        }
+        if (!DB::getSong($id)) {
+            fail('Lagu tidak ditemukan.', 404);
+        }
+        DB::updateSong($id, $title, $lyric, $chord, $perSlide);
+        respond(['id' => $id, 'title' => $title]);
+
+    // ----------------------------------------------- detail_remote
+    // Preview hasil search remote TANPA menyimpan ke DB.
+    case 'detail_remote':
+        $dSource = $_GET['source'] ?? '';
+        $dRef = trim($_GET['source_ref'] ?? '');
+        if (!in_array($dSource, ['unlimitedworship', 'jrchord', 'liriklagukristen'], true) || $dRef === '') {
+            fail('Parameter source dan source_ref wajib diisi.');
+        }
+        try {
+            $d = fetchRemoteDetail($scraper, $dSource, $dRef);
+        } catch (Throwable $e) {
+            fail('Gagal mengambil lirik dari sumber.', 502);
+        }
+        $dLyric = trim((string) ($d['lyric'] ?? ''));
+        if ($dLyric === '') {
+            fail('Lirik kosong dari sumber.', 502);
+        }
+        respond([
+            'title' => $d['title'] ?? '',
+            'lyric' => $dLyric,
+            'chord' => $d['chord'] ?? '',
+            'slides' => $scraper->splitLyrics($dLyric, 2),
+            'source' => $dSource,
+            'source_ref' => $dRef,
+            'saved' => false,
+        ]);
+
+    // ------------------------------------------------- save_remote
+    // Simpan eksplisit hasil search remote ke DB (baru bisa diedit).
+    case 'save_remote':
+        $body = postJson();
+        $sSource = (string) ($body['source'] ?? '');
+        $sRef = trim((string) ($body['source_ref'] ?? ''));
+        $sSlug = preg_replace('/[^a-z0-9-]/', '', strtolower((string) ($body['slug'] ?? '')));
+        $sPerSlide = (int) ($body['lines_per_slide'] ?? 2);
+        if (!in_array($sSource, ['unlimitedworship', 'jrchord', 'liriklagukristen'], true) || $sRef === '') {
+            fail('Parameter source dan source_ref wajib diisi.');
+        }
+        if ($sSlug !== '' && ($already = DB::getSongBySlug($sSlug))) {
+            respond(['id' => $already['id'], 'title' => $already['title'], 'slug' => $already['slug'], 'already' => true]);
+        }
+        try {
+            $sd = fetchRemoteDetail($scraper, $sSource, $sRef);
+        } catch (Throwable $e) {
+            fail('Gagal mengambil lirik dari sumber.', 502);
+        }
+        $sLyric = trim((string) ($sd['lyric'] ?? ''));
+        if ($sLyric === '') {
+            fail('Lirik kosong dari sumber.', 502);
+        }
+        $sTitle = trim((string) ($sd['title'] ?? '')) ?: $sSlug;
+        $sSaved = DB::insertSong($sTitle, $sLyric, (string) ($sd['chord'] ?? ''), $sSource, $sSlug ?: 'lagu-' . substr(md5($sRef), 0, 6), $sRef, $sPerSlide);
+        respond(['id' => $sSaved['id'], 'title' => $sSaved['title'], 'slug' => $sSaved['slug']], 201); 
 
     // ------------------------------------------------------------ state_get
     case 'state_get':
@@ -176,7 +253,8 @@ switch ($action) {
             (string) ($body['title'] ?? ''),
             (string) ($body['ref'] ?? ''),
             is_array($body['slides'] ?? null) ? $body['slides'] : [],
-            (int) ($body['slide'] ?? 0)
+            (int) ($body['slide'] ?? 0),
+            isset($body['song_id']) && $body['song_id'] !== null ? (int) $body['song_id'] : null
         );
         respond(['ok' => true]);
 
@@ -192,6 +270,21 @@ switch ($action) {
 
 // ---- remote search helpers ----
 
+/** Fetch full lyric+chord from a remote source WITHOUT saving to DB. */
+function fetchRemoteDetail(UnlimitedWorshipScraper $scraper, string $source, string $ref): array
+{
+    if ($source === 'jrchord') {
+        return (new JrChordScraper())->detail($ref);
+    }
+    if ($source === 'liriklagukristen') {
+        return (new LirikLaguKristenScraper())->detail($ref);
+    }
+    if (preg_match('#/songs/detail/(\d+)/([\w-]+)#', $ref, $m)) {
+        return $scraper->detail((int) $m[1], $m[2]);
+    }
+    throw new RuntimeException('source_ref tidak valid untuk ' . $source);
+}
+
 /** unlimitedworship.org fallback (may be Cloudflare-blocked → returns []). */
 function searchUnlimitedWorship(UnlimitedWorshipScraper $scraper, string $q): array
 {
@@ -200,20 +293,16 @@ function searchUnlimitedWorship(UnlimitedWorshipScraper $scraper, string $q): ar
         $out = [];
         foreach ($remote as $r) {
             $slug = preg_replace('/[^a-z0-9-]/', '', strtolower((string) $r['slug']));
-            $cached = DB::insertSong(
-                $r['title'],
-                (string) ($r['lyric_snippet'] ?? ''),
-                '',
-                'unlimitedworship',
-                $slug ?: 'lagu-' . $r['id'],
-                $r['url']
-            );
+            $existing = $slug ? DB::getSongBySlug($slug) : null;
             $out[] = [
-                'id' => $cached['id'],
+                'id' => $existing ? $existing['id'] : null,
                 'title' => $r['title'],
-                'slug' => $cached['slug'],
+                'slug' => $slug,
                 'lyric' => $r['lyric_snippet'] ?? '',
                 'source' => 'unlimitedworship',
+                'source_ref' => $r['url'],
+                'remote_id' => $r['id'],
+                'saved' => (bool) $existing,
             ];
         }
         return $out;
@@ -232,22 +321,16 @@ function searchLirikLaguKristen(string $q): array
         foreach ($remote as $r) {
             $slug = preg_replace('/[^a-z0-9-]/', '', strtolower((string) $r['slug']));
             $excerpt = mb_substr((string) ($r['excerpt'] ?? ''), 0, 120);
-            // index menyimpan lirik penuh — langsung simpan, lazy fetch tidak perlu
-            $full = (string) ($r['lyric_full'] ?? '');
-            $existing = DB::getSongBySlug($slug);
-            if ($existing) {
-                if (!empty($full) && strlen($full) > strlen($existing['lyric'])) {
-                    DB::updateSongContent($existing['id'], $full, '');
-                }
-            }
-            $cached = $existing ? ['id' => $existing['id'], 'slug' => $existing['slug'], 'title' => $existing['title']]
-                : DB::insertSong($r['title'], $full ?: $excerpt, '', 'liriklagukristen', $slug ?: 'lagu-' . substr(md5($r['url']), 0, 6), $r['url']);
+            // TIDAK auto-simpan ke DB — user harus klik +Simpan dulu (baru bisa diedit)
+            $existing = $slug ? DB::getSongBySlug($slug) : null;
             $out[] = [
-                'id' => $cached['id'],
+                'id' => $existing ? $existing['id'] : null,
                 'title' => $r['title'],
-                'slug' => $cached['slug'],
+                'slug' => $slug,
                 'lyric' => $excerpt,
                 'source' => 'liriklagukristen',
+                'source_ref' => $r['url'],
+                'saved' => (bool) $existing,
             ];
         }
         return $out;
@@ -269,19 +352,16 @@ function searchJrChord(string $q): array
         foreach ($remote as $r) {
             $slug = preg_replace('/[^a-z0-9-]/', '', strtolower((string) $r['slug']));
             $excerpt = $excerpts[$r['slug']] ?? '';
-            // update kalau sudah pernah di-cache (hindari duplikat slug)
-            $existing = DB::getSongBySlug($slug);
-            if ($existing && !empty($excerpt) && $existing['lyric'] === '') {
-                DB::updateSongContent($existing['id'], $excerpt, '');
-            }
-            $cached = $existing ? ['id' => $existing['id'], 'slug' => $existing['slug'], 'title' => $existing['title']]
-                : DB::insertSong($r['title'], $excerpt, '', 'jrchord', $slug ?: 'lagu-' . substr(md5($r['url']), 0, 6), $r['url']);
+            // TIDAK auto-simpan ke DB — user harus klik +Simpan dulu (baru bisa diedit)
+            $existing = $slug ? DB::getSongBySlug($slug) : null;
             $out[] = [
-                'id' => $cached['id'],
+                'id' => $existing ? $existing['id'] : null,
                 'title' => $r['title'],
-                'slug' => $cached['slug'],
-                'lyric' => $excerpts[$r['slug']] ?? '',
+                'slug' => $slug,
+                'lyric' => $excerpt,
                 'source' => 'jrchord',
+                'source_ref' => $r['url'],
+                'saved' => (bool) $existing,
             ];
         }
         return $out;
